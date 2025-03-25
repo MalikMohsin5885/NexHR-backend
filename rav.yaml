@@ -1,0 +1,9 @@
+scripts:
+  server:
+    - python manage.py runserver 8000
+  createdatabase:
+    - python manage.py create_db
+  makemigrations:
+    - python manage.py makemigrations
+  migrate:
+    - python manage.py migrate
