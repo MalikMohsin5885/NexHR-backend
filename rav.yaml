@@ -7,3 +7,5 @@ scripts:
     - python manage.py makemigrations
   migrate:
     - python manage.py migrate
+  freezerequirements:
+    - uv pip freeze > requirements.txt
