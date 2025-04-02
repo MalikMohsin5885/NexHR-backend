@@ -40,16 +40,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',
-    
     'rest_framework',
     'rest_framework.authtoken',
-    
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-    'dj_rest_auth.registration',
-    
     'dj_rest_auth',
     "accounts",
     "api",
@@ -63,8 +55,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    
-    "allauth.account.middleware.AccountMiddleware",
 ]
 
 ROOT_URLCONF = 'nexhr_backend.urls'
@@ -167,12 +157,3 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv("GMAIL_USER")
 EMAIL_HOST_PASSWORD = os.getenv("GMAIL_PASSWORD")
-
-# django.contrib.sites
-SITE_ID = 1
-
-
-ACCOUNT_AUTHENTICATION_METHOD = "email"  # Use Email / Password authentication
-ACCOUNT_USERNAME_REQUIRED = False
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_EMAIL_VERIFICATION = "none" # Do not require email confirmation
