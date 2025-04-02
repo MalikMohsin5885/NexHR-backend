@@ -1,13 +1,16 @@
 scripts:
   server:
     - python manage.py runserver 8000
-  createdb:
+  create_db:
     - python manage.py create_db
   makemigrations:
     - python manage.py makemigrations
   migrate:
     - python manage.py migrate
-  freezerequirements:
+  seed_db:
+    - python manage.py seed_db
+  freeze_requirements:
     - uv pip freeze > requirements.txt
-  createsuperuser:
+  create_superuser:
     - python manage.py createsuperuser
+  
