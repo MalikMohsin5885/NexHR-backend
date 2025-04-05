@@ -17,3 +17,18 @@ def send_verification_email(user, request):
     message = f"Hi {user.fname},\n\nClick the link below to verify your email:\n{verification_link}\n\nThanks!"
     
     send_mail(subject, message, settings.EMAIL_HOST_USER, [user.email])
+
+
+def send_reset_password_email(user, uid, token, request):
+    domain = request.get_host()
+    reset_url = f"http://{domain}/api/auth/reset-password/{uid}/{token}/"  # This should match frontend route
+    subject = "Reset Your Password"
+    message = f"Hi {user.fname},\n\nClick the link below to reset your password:\n{reset_url}\n\nIf you did not request this, ignore this email."
+    
+    send_mail(
+        subject,
+        message,
+        settings.DEFAULT_FROM_EMAIL,
+        [user.email],
+        fail_silently=False,
+    )

@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import RegisterView, CustomTokenObtainPairView, VerifyEmailView, UserView
+from .views import RegisterView, CustomTokenObtainPairView, VerifyEmailView, UserView, PasswordResetRequestView, PasswordResetConfirmView
 from django.urls import path
 from .views import GoogleLogin
 
@@ -13,6 +13,8 @@ urlpatterns = [
     path("verify-email/<uidb64>/<token>/", VerifyEmailView.as_view(), name="verify-email"),
     
     path("google/", GoogleLogin.as_view(), name="google_login"),
+    # path("google/callback/", GoogleLoginCallback.as_view(), name="google_login_callback"),  # callback used if we used auth lib so that other tables also included 
     
-    # path("google/callback/", GoogleLoginCallback.as_view(), name="google_login_callback"),  #
+    path("forgot-password/", PasswordResetRequestView.as_view(), name="forgot-password"),
+    path("reset-password/<uidb64>/<token>/", PasswordResetConfirmView.as_view(), name="reset-password"),
 ]
