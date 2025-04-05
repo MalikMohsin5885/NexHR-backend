@@ -36,10 +36,17 @@ class UserManager(BaseUserManager):
         return user
 
 class User(AbstractBaseUser, PermissionsMixin):
+    
     STATUS_CHOICES = [
         ('active', 'Active'),
         ('inactive', 'Inactive'),
     ]
+    
+    LOGIN_METHOD_CHOICES = [
+        ('email', 'Email/Password'),
+        ('google', 'Google'),
+    ]
+
 
     id = models.AutoField(primary_key=True)
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="users", null=True, blank=True)
@@ -47,13 +54,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     lname = models.CharField(max_length=255, null=True, blank=True)
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20, null=True)
-    password = models.CharField(max_length=255)
+    password = models.CharField(max_length=255, null=True)
     status = models.CharField(max_length=10, null=True, choices=STATUS_CHOICES, default='active')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
-    is_verified = models.BooleanField(default=False)  # New field
+    is_verified = models.BooleanField(default=False)
+    login_method = models.CharField(max_length=20, choices=LOGIN_METHOD_CHOICES, default='email')
 
     objects = UserManager()
 

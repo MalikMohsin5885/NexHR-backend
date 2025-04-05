@@ -40,3 +40,6 @@ coverage.xml
 
 # Migrations
 migrations/
+
+# txt
+db_queries.txt

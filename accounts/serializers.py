@@ -4,24 +4,6 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .utils import send_verification_email
 
 User = get_user_model()
-
-# class RegisterSerializer(serializers.ModelSerializer):
-#     password = serializers.CharField(write_only=True, min_length=6)
-
-#     class Meta:
-#         model = User
-#         fields = ['id', 'fname', 'lname', 'email', 'phone', 'password']
-#         extra_kwargs = {'password': {'write_only': True}}
-
-#     def create(self, validated_data):
-#         password = validated_data.pop('password', None)
-#         user = User.objects.create(**validated_data)
-#         if password:
-#             user.set_password(password)
-#         user.save()
-#         return user
-
-
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
 
@@ -55,3 +37,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["email"] = user.email
         
         return token
+
+class UserListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'fname', 'lname', 'phone', 'is_verified', 'company_id']
+        
