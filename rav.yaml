@@ -13,4 +13,7 @@ scripts:
     - uv pip freeze > requirements.txt
   create_superuser:
     - python manage.py createsuperuser
-  
+  dir_tree:
+    - tree /F /A | findstr /V "venv"
+  install_requirements:
+    - pip install -r requirements.txt
