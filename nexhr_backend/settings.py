@@ -169,9 +169,18 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:8080",
     "http://localhost:8080",
+    "https://preview--hr-hub-navigator.lovable.app",
+
+    
+    
 ]
 
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = True  # 👈 Required to allow cookies/auth headers with requests
+
+# ✅ Optional: allow all for development (comment out in prod)
+# CORS_ALLOW_ALL_ORIGINS = True
+
+# Custom user model
 AUTH_USER_MODEL = "accounts.User"
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
