@@ -12,6 +12,7 @@ class Company(models.Model):
     def __str__(self):
         return self.name
 
+
 class UserManager(BaseUserManager):
     def create_user(self, email, fname, lname=None, phone=None, password=None, company=None):
         if not email:
@@ -67,6 +68,16 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['fname']
+    
+    
+    def get_roles_with_permissions(self):
+        data = []
+        for ur in self.roles.select_related('role').prefetch_related('role__permissions__permission'):
+            data.append({
+                "role": ur.role.name,
+                "permissions": [p.permission.name for p in ur.role.permissions.all()]
+            })
+        return data
 
     def __str__(self):
         return f"{self.fname} {self.lname} ({'Verified' if self.is_verified else 'Unverified'})"

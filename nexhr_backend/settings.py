@@ -68,7 +68,7 @@ MIDDLEWARE = [
     
     "allauth.account.middleware.AccountMiddleware",
     'corsheaders.middleware.CorsMiddleware',
-    
+    'django.middleware.common.CommonMiddleware',
 ]
 
 ROOT_URLCONF = 'nexhr_backend.urls'
@@ -165,8 +165,11 @@ SIMPLE_JWT = {
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://127.0.0.1:8080",
+    "http://localhost:8080",
 ]
 
+CORS_ALLOW_CREDENTIALS = True
 AUTH_USER_MODEL = "accounts.User"
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

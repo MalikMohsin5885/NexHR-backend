@@ -152,16 +152,20 @@ from django.utils.encoding import force_str
 
 from rest_framework import generics, status
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .serializers import RegisterSerializer, CustomTokenObtainPairSerializer, UserListSerializer, PasswordResetRequestSerializer
+from .serializers import RegisterSerializer, CustomTokenObtainPairSerializer, UserListSerializer, PasswordResetRequestSerializer, CompanySerializer, UserProfileSerializer
 
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.shortcuts import redirect
+
+
+from .models import Company
 
 import requests
 
@@ -223,7 +227,9 @@ class VerifyEmailView(APIView):
         if default_token_generator.check_token(user, token):
             user.is_verified = True
             user.save()
-            return Response({"message": "Email successfully verified"}, status=status.HTTP_200_OK)
+            return redirect("http://localhost:8080/login")
+
+            # return Response({"message": "Email successfully verified"}, status=status.HTTP_200_OK)
         else:
             return Response({"error": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -270,7 +276,30 @@ class PasswordResetConfirmView(APIView):
         else:
             return Response({"error": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
 
+# generic api view
 class UserView(generics.ListAPIView):
     queryset = User.objects.all()
     serializer_class = UserListSerializer
     permission_classes = [AllowAny]
+
+class AuthenticatedUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserProfileSerializer(request.user)
+        return Response(serializer.data)
+
+    
+# comapny registration
+class CompanyCreateView(generics.CreateAPIView):
+    queryset = Company.objects.all()
+    serializer_class = CompanySerializer
+    permission_classes = [IsAuthenticated]
+    
+    def perform_create(self, serializer):
+        company = serializer.save()
+        
+        user = self.request.user
+        user.company = company
+        user.save()
+        
