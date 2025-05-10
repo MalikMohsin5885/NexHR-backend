@@ -81,7 +81,7 @@ class UserListSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'fname', 'lname', 'email', 'phone', 'status', 'is_verified', 'login_method', 'company']
+        fields = ['id', 'fname', 'lname', 'email', 'phone', 'status', 'is_verified', 'login_method', 'company', 'department']
 
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()

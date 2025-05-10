@@ -149,6 +149,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_decode
 from django.utils.encoding import force_str
+from django.contrib.contenttypes.models import ContentType
 
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -160,12 +161,12 @@ from .serializers import RegisterSerializer, CustomTokenObtainPairSerializer, Us
 
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
+
 from dj_rest_auth.registration.views import SocialLoginView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.shortcuts import redirect
 
-
-from .models import Company
+from .models import Company, Department
 
 import requests
 
@@ -233,11 +234,21 @@ class VerifyEmailView(APIView):
         else:
             return Response({"error": "Invalid or expired token"}, status=status.HTTP_400_BAD_REQUEST)
 
-
+    
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {"message": "User registered successfully. Please verify your email."},
+            status=status.HTTP_201_CREATED
+        )
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -297,9 +308,21 @@ class CompanyCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated]
     
     def perform_create(self, serializer):
+        # Step 1: Create the company
         company = serializer.save()
-        
+
+        # Step 2: Create HR department linked to this company via polymorphic relation
+        content_type = ContentType.objects.get_for_model(Company)
+        hr_department = Department.objects.create(
+            name="HR",
+            content_type=content_type,
+            object_id=company.id
+        )
+
+        # Step 3: Assign company and HR department to the current user
         user = self.request.user
         user.company = company
+        user.department = hr_department  # assumes `User` model has `department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)`
         user.save()
+        
         

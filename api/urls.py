@@ -11,7 +11,6 @@ urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
     
     path('user/<int:pk>/roles-permissions/', UserDetailWithRolesPermissions.as_view(), name='user-roles-permissions'),
-    path('user/<int:pk>/roles-permissions/', UserDetailWithRolesPermissions.as_view(), name='user-roles-permissions'),
     path('roles/create/', CreateRoleView.as_view(), name='create-role'),
     path('permissions/create/', CreatePermissionView.as_view(), name='create-permission'),
     
