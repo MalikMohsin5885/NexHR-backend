@@ -7,7 +7,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
-from .models import Company
+from .models import Company, CompanyLinkedInAuth
 from api.models import UserRoles
 from api.serializers import RoleWithPermissionsSerializer
 
@@ -122,3 +122,24 @@ class UserWithRolesPermissionsSerializer(serializers.ModelSerializer):
         user_roles = UserRoles.objects.filter(user=obj).select_related('role')
         roles = [ur.role for ur in user_roles]
         return RoleWithPermissionsSerializer(roles, many=True).data
+    
+
+class CompanyLinkedInAuthSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompanyLinkedInAuth
+        fields = '__all__'
+        read_only_fields = ['user', 'company', 'created_at']
+        
+class CSVUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['fname', 'lname', 'email', 'phone']
+
+
+class UserSerializer(serializers.ModelSerializer):
+    company = serializers.CharField(source='company.name', read_only=True)
+    branch = serializers.CharField(source='branch.name', read_only=True)
+
+    class Meta:
+        model = User
+        fields = ['id', 'fname', 'lname', 'email', 'phone', 'company', 'branch']

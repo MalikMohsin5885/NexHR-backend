@@ -150,6 +150,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_decode
 from django.utils.encoding import force_str
 from django.contrib.contenttypes.models import ContentType
+from django.utils.timezone import now, timedelta
 
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -165,8 +166,10 @@ from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.shortcuts import redirect
+from urllib.parse import quote
 
-from .models import Company, Department
+from .models import Company, Department, CompanyLinkedInAuth, Branch
+from django.utils.timezone import now
 
 import requests
 
@@ -190,28 +193,55 @@ class GoogleLogin(SocialLoginView):
             return Response({"error": "Failed to fetch user info from Google"}, status=status.HTTP_400_BAD_REQUEST)
 
         google_user = google_response.json()
+        print("google user-------",google_user)
         email = google_user.get("email")
         name = google_user.get("name")
         profile_picture = google_user.get("picture")
+        google_id = google_user.get("sub")
 
         first_name, *rest = name.strip().split()
         last_name = " ".join(rest) if rest else None
         
-        user, created = User.objects.get_or_create(email=email, defaults={"fname": first_name, "lname" : last_name})
-        user.login_method = 'google'
-        user.is_verified = True
-        user.save()
-        
-        refresh = RefreshToken.for_user(user)
+        # user, created = User.objects.get_or_create(email=email, defaults={"fname": first_name, "lname" : last_name})
+        # Step 2: Check if user exists
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Step 3: Register new user (set is_verified = True since it's from Google)
+            user = User.objects.create(
+                email=email,
+                login_method = 'google',
+                fname = first_name, 
+                lname = last_name,
+                is_verified = True,
+                
+                # google_id=google_id  # Optional: save for later reference
+            )
+            
+            user.set_unusable_password()
+            user.save()
 
+        # Step 4: Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
         return Response({
-            "message": "Google login successful",
-            "email": email,
-            "name": name,
-            "profile_picture": profile_picture,
             "access": str(refresh.access_token),
             "refresh": str(refresh),
         })
+        
+        # user.login_method = 'google'
+        # user.is_verified = True
+        # user.save()
+        
+        # refresh = RefreshToken.for_user(user)
+
+        # return Response({
+        #     "message": "Google login successful",
+        #     "email": email,
+        #     "name": name,
+        #     "profile_picture": profile_picture,
+        #     "access": str(refresh.access_token),
+        #     "refresh": str(refresh),
+        # })
 
 
 class VerifyEmailView(APIView):
@@ -311,18 +341,212 @@ class CompanyCreateView(generics.CreateAPIView):
         # Step 1: Create the company
         company = serializer.save()
 
-        # Step 2: Create HR department linked to this company via polymorphic relation
-        content_type = ContentType.objects.get_for_model(Company)
+        # Step 2: Create the default branch (e.g., "SlashLogics Main")
+        branch = Branch.objects.create(
+            company=company,
+            name=f"{company.name} Main",
+        )
+
+        # Step 3: Create the HR department under that branch
         hr_department = Department.objects.create(
             name="HR",
-            content_type=content_type,
-            object_id=company.id
+            branch=branch
         )
 
         # Step 3: Assign company and HR department to the current user
         user = self.request.user
         user.company = company
-        user.department = hr_department  # assumes `User` model has `department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)`
+        user.branch = branch
+        user.department = hr_department
         user.save()
+
+
+# views.py
+class LinkedInStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        company = user.company 
+
+        try:
+            linkedin_auth = company.linkedin_auth
+            if linkedin_auth.expires_at > now():
+                print("------------linkedin conected------------")
+                return Response({
+                    "connected": True,
+                    "expires_at": linkedin_auth.expires_at
+                })
+            else:
+                print("------------linkedin conected expired------------")
+                return Response({
+                    "connected": False,
+                    "reason": "expired"
+                })
+        except CompanyLinkedInAuth.DoesNotExist:
+            print("------------expireddddd------------")
+            return Response({
+                "connected": False,
+                "reason": "not_connected"
+            })
+            
+
+class LinkedInAuthRedirectView(APIView):
+    def get(self, request):
+        client_id = settings.LINKEDIN_CLIENT_ID
+        redirect_uri = settings.LINKEDIN_REDIRECT_URI
+        scope = 'email w_member_social'
+
+        url = (
+            f"https://www.linkedin.com/oauth/v2/authorization"
+            f"?response_type=code&client_id={client_id}&redirect_uri=http://localhost:8000/api/auth/linkedin/callback/"
+            f"&state=foobar&scope=email%20w_member_social"
+        )
+        return redirect(url)
+    
+    
+
+class LinkedInCallbackView(APIView):
+    # permission_classes = [IsAuthenticated] 
+
+    def get(self, request):
+        code = request.GET.get('code')
+        if not code:
+            return Response({'error': 'Authorization code is missing.'}, status=400)
+
+        # Step 1: Exchange code for access_token
+        token_response = requests.post(
+            'https://www.linkedin.com/oauth/v2/accessToken',
+            data={
+                'grant_type': 'authorization_code',
+                'code': code,
+                'redirect_uri': 'http://localhost:8000/api/auth/linkedin/callback/',
+                'client_id': settings.LINKEDIN_CLIENT_ID,
+                'client_secret': settings.LINKEDIN_CLIENT_SECRET,
+            },
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+            }
+        )
+
+        if token_response.status_code != 200:
+            return Response({'error': 'Failed to obtain access token.', 'details': token_response.json()}, status=400)
+
+        token_data = token_response.json()
+        access_token = token_data.get('access_token')
+        expires_in = token_data.get('expires_in')
         
         
+
+        if not access_token:
+            return Response({'error': 'Access token missing from response.'}, status=400)
+
+        expires_at = now() + timedelta(seconds=expires_in)
+        print("expire_in----------",expires_in)
+        print("timedelta(seconds=expires_in)----------",timedelta(seconds=expires_in))
+        print("expires_at-----",expires_at)
+        
+        # Step 2: Get the company associated with the user
+        try:
+            company = request.user.company
+        except Company.DoesNotExist:
+            return Response({'error': 'No company associated with the authenticated user.'}, status=404)
+
+        # Step 3: Save or update LinkedIn token
+        CompanyLinkedInAuth.objects.update_or_create(
+            company=company,
+            defaults={
+                'user': request.user,
+                'access_token': access_token,
+                'expires_at': expires_at
+            }
+        )
+
+        return Response({'message': 'LinkedIn connected successfully.'})
+
+
+
+class LinkedInTokenView(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request):
+        code = request.data.get('code')
+        print("code==========",code)
+        if not code:
+            return Response({'error': 'Missing code'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            token_response = requests.post(
+                'https://www.linkedin.com/oauth/v2/accessToken',
+                data={
+                    'grant_type': 'authorization_code',
+                    'code': code,
+                    'redirect_uri': 'http://localhost:8080/linkedin-auth/callback/',
+                    'client_id': '77gikjnekqaynw',
+                    'client_secret': 'WPL_AP1.ZthoFlnagz7t8LkI.HbWpEg==',
+                },
+                headers={
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                }
+            )
+
+            if token_response.status_code != 200:
+                return Response({'error': 'Failed to obtain access token.', 'details': token_response.json()}, status=400)
+
+            token_data = token_response.json()
+            member_access_token = token_data.get('access_token')
+            member_id_token = token_data.get('id_token')
+            expires_in = token_data.get('expires_in')
+
+            if not member_access_token:
+                return Response({'error': 'Access token missing from response.'}, status=400)
+
+            expires_at = now() + timedelta(seconds=expires_in)
+            
+            print("expire_in----------",expires_in)
+            print("timedelta(seconds=expires_in)----------",timedelta(seconds=expires_in))
+            print("expires_at-----",expires_at)
+            
+             # Step 2: Fetch LinkedIn user info using access token
+            userinfo_response = requests.get(
+                'https://api.linkedin.com/v2/userinfo',
+                headers={
+                    'Authorization': f'Bearer {member_access_token}'
+                }
+            )
+
+            if userinfo_response.status_code != 200:
+                return Response({'error': 'Failed to fetch LinkedIn user info.', 'details': userinfo_response.json()}, status=400)
+
+            member_user_data = userinfo_response.json()
+            print("LinkedIn User Info:", member_user_data)
+            sub_member_user_data = member_user_data.get('sub')
+            person_urn = f"urn:li:person:{sub_member_user_data}"
+            print("person_urn :", person_urn)
+            
+            # Step 3: Get company associated with user
+            user = request.user
+            if not hasattr(user, 'company'):
+                return Response({'error': 'Authenticated user has no associated company.'}, status=404)
+
+            company = user.company
+
+            # Step 3: Save or update the token record
+            CompanyLinkedInAuth.objects.update_or_create(
+                company=company,
+                defaults={
+                    'user': user,
+                    'access_token': member_access_token,
+                    'id_token': member_id_token,
+                    'updated_at': now(),
+                    'person_urn': person_urn,
+                    'expires_at': expires_at
+                }
+            )
+
+            return Response({'message': 'LinkedIn token stored successfully.'}, status=200)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+

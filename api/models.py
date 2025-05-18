@@ -55,21 +55,6 @@ class RequiredSkill(models.Model):
 
 
 class JobDetails(models.Model):
-    JOB_TYPE_CHOICES = [
-        ('full_time', 'Full Time'),
-        ('part_time', 'Part Time'),
-        ('contract', 'Contract'),
-        ('internship', 'Internship'),
-    ]
-
-    EXPERIENCE_LEVEL_CHOICES = [
-        ('entry', 'Entry'),
-        ('mid', 'Mid'),
-        ('senior', 'Senior'),
-        ('lead', 'Lead'),
-    ]
-
-
     id = models.AutoField(primary_key=True)
     posted_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='posted_jobs')
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='jobs')
@@ -77,23 +62,29 @@ class JobDetails(models.Model):
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='jobs')
 
     job_title = models.CharField(max_length=255)
-    job_category = models.CharField(max_length=100)
-    job_type = models.CharField(max_length=50, choices=JOB_TYPE_CHOICES)
+    # job_category = models.CharField(max_length=100)
+    job_type = models.CharField(max_length=50)
+
+    # ✅ Removed choices
+    location_type = models.CharField(max_length=50)
+
     job_deadline = models.DateTimeField()
-    employee_terms = models.CharField(max_length=255)
-    location = models.TextField(blank=True) # the location from where the jon is posted
+    location = models.TextField(blank=True)
+    city = models.CharField(max_length=100, default='N/A', null=True)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    country = models.CharField(max_length=100, default='N/A', null=True)
     salary_from = models.DecimalField(max_digits=10, decimal_places=2)
     salary_to = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=10)
     period = models.CharField(max_length=50)  # e.g., Monthly, Annually
-    description = models.TextField()
-    requirements = models.TextField()
+    description = models.TextField(max_length=500, null=True)
+    requirements = models.TextField(max_length=500, null=True)
     status = models.CharField(max_length=50)
-    
-    
-    experience_level = models.CharField(max_length=50, choices=EXPERIENCE_LEVEL_CHOICES)    
-    job_schema = models.JSONField()
 
+    # ✅ Removed choices
+    experience_level = models.CharField(max_length=50)
+
+    job_schema = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

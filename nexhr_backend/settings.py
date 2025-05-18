@@ -165,11 +165,13 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:8080",
-    "http://localhost:8080",
-]
+# CORS_ALLOWED_ORIGINS = [
+#     # "http://localhost:3000",
+#     # "http://127.0.0.1:8080",
+#     # "http://localhost:8080",
+# ]
+
+CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_CREDENTIALS = True
 AUTH_USER_MODEL = "accounts.User"
@@ -220,3 +222,10 @@ SOCIALACCOUNT_PROVIDERS = {
         },
     }
 }
+
+
+
+
+LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
+LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
+LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")

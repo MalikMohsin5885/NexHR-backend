@@ -5,7 +5,12 @@ from .views import (
     CreateRoleView,
     CreatePermissionView,
     AssignRoleToUserView,
-    AssignPermissionToRoleView
+    AssignPermissionToRoleView, 
+    CreateJobPostView, 
+    ListJobView,
+    PostJobToLinkedInView, 
+    EmployeeCSVImportView, 
+    CompanyUsersView
 )
 urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
@@ -16,5 +21,12 @@ urlpatterns = [
     
     path('roles/assign-permission/', AssignPermissionToRoleView.as_view(), name='assign-permission-to-role'),
     path('users/assign-role/', AssignRoleToUserView.as_view(), name='assign-role-to-user'),
-
+    
+    path('jobs/post/', CreateJobPostView.as_view(), name='job-post'),
+    path('jobs/list/', ListJobView.as_view(), name='jobs-list'),
+     
+    path('post-job-linkedin/', PostJobToLinkedInView.as_view(), name='post-job-linkedin'),
+    
+    path('import-employees/', EmployeeCSVImportView.as_view(), name='import-employees'),
+    path('company-users/', CompanyUsersView.as_view(), name='company-users'),
 ]

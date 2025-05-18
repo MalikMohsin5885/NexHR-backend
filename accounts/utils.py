@@ -21,11 +21,13 @@ def send_verification_email(user, request):
 
 
 def send_reset_password_email(user, uid, token, request):
-    domain = request.get_host()
-    reset_url = f"http://{domain}/api/auth/reset-password/{uid}/{token}/"  # This should match frontend route
+    # Use your frontend domain here, either via environment variable or hardcoded in dev
+    frontend_url = "http://localhost:8080"  # Change to actual frontend domain in production
+    reset_url = f"{frontend_url}/reset-password/{uid}/{token}/"
+
     subject = "Reset Your Password"
     message = f"Hi {user.fname},\n\nClick the link below to reset your password:\n{reset_url}\n\nIf you did not request this, ignore this email."
-    
+
     send_mail(
         subject,
         message,

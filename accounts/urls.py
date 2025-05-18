@@ -1,6 +1,9 @@
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import RegisterView, CustomTokenObtainPairView, VerifyEmailView, UserView, PasswordResetRequestView, PasswordResetConfirmView, CompanyCreateView, AuthenticatedUserView
+
+from .views import RegisterView, CustomTokenObtainPairView, VerifyEmailView, UserView, PasswordResetRequestView, PasswordResetConfirmView, CompanyCreateView, AuthenticatedUserView, LinkedInAuthRedirectView, LinkedInCallbackView, LinkedInStatusView, LinkedInTokenView
+
+
 from django.urls import path
 from .views import GoogleLogin
 
@@ -22,4 +25,11 @@ urlpatterns = [
     
     # company registration
     path('register-company/', CompanyCreateView.as_view(), name='register-company'),
+    
+    path('linkedin/status/', LinkedInStatusView.as_view(), name='linkedin-status'),
+    path('linkedin/auth/', LinkedInAuthRedirectView.as_view(), name='linkedin-auth'),
+    path('linkedin/callback/', LinkedInCallbackView.as_view(), name='linkedin-callback'),
+    
+    
+    path('linkedin/token/', LinkedInTokenView.as_view(), name='linkedin-token'),
 ]
