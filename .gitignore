@@ -38,8 +38,7 @@ env/
 coverage.xml
 *.cover
 
-# Migrations
-migrations/
 
 # txt
 db_queries.txt
+linkedin_request_sample.txt

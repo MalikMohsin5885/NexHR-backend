@@ -79,6 +79,8 @@ class UserListSerializer(serializers.ModelSerializer):
         fields = ['id', 'fname', 'lname', 'phone', 'is_verified', 'company_id']
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    company = serializers.CharField(source='company.name', read_only=True)
+    department = serializers.CharField(source='department.name', read_only=True)
     class Meta:
         model = User
         fields = ['id', 'fname', 'lname', 'email', 'phone', 'status', 'is_verified', 'login_method', 'company', 'department']

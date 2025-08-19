@@ -14,7 +14,9 @@ import requests
 from rest_framework.parsers import MultiPartParser
 from io import TextIOWrapper
 import csv
-from .utils import generate_random_password, send_invitation_email
+from .utils import generate_random_password
+from api.tasks import send_invitation_email_task
+
 
 
 
@@ -64,6 +66,8 @@ class AssignPermissionToRoleView(APIView):
             return Response({"message": "Permission assigned to role successfully."}, status=201)
         return Response(serializer.errors, status=400)
 
+
+
 class AssignRoleToUserView(APIView):
     def post(self, request):
         serializer = AssignRoleToUserSerializer(data=request.data)
@@ -71,6 +75,8 @@ class AssignRoleToUserView(APIView):
             serializer.save()
             return Response({"message": "Role assigned to user successfully."}, status=201)
         return Response(serializer.errors, status=400)
+
+
 
 
 class CreateJobPostView(APIView):
@@ -117,12 +123,14 @@ class CreateJobPostView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+
 class ListJobView(generics.ListAPIView):
     queryset = JobDetails.objects.all().order_by('-created_at')
     serializer_class = JobListSerializer
     permission_classes = [AllowAny]
     pagination_class = CustomPageNumberPagination
     
+
 
 class PostJobToLinkedInView(APIView):
     def post(self, request):
@@ -204,6 +212,7 @@ class EmployeeCSVImportView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        print("EmployeeCSVImportView-----------------------")
         csv_file = request.FILES.get('file')
         if not csv_file:
             return Response({"detail": "No CSV file uploaded."}, status=400)
@@ -241,7 +250,14 @@ class EmployeeCSVImportView(APIView):
                     user_instance = serializer.save(company=company, branch=branch)
                     user_instance.set_password(temp_password)
                     user_instance.save()
-                    send_invitation_email(user_instance, temp_password)
+                    
+                    # Call Celery async task
+                    send_invitation_email_task.delay(
+                        user_instance.email,
+                        user_instance.fname,
+                        temp_password
+                    )
+                    
                     created_users.append(email)
                 else:
                     return Response({
@@ -259,6 +275,9 @@ class EmployeeCSVImportView(APIView):
             "created": created_users,
             "updated": updated_users
         }, status=201)
+
+
+
 
 
 class CompanyUsersView(APIView):

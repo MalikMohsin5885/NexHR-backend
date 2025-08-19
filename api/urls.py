@@ -24,7 +24,7 @@ urlpatterns = [
     
     path('jobs/post/', CreateJobPostView.as_view(), name='job-post'),
     path('jobs/list/', ListJobView.as_view(), name='jobs-list'),
-     
+    
     path('post-job-linkedin/', PostJobToLinkedInView.as_view(), name='post-job-linkedin'),
     
     path('import-employees/', EmployeeCSVImportView.as_view(), name='import-employees'),
