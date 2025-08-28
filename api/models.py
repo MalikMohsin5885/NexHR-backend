@@ -51,7 +51,6 @@ class RequiredSkill(models.Model):
 
     def __str__(self):
         return self.name
- 
 
 
 class JobDetails(models.Model):
