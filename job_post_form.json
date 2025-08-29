@@ -1,0 +1,28 @@
+{
+  "job_title": null,
+  "job_category": null,
+  "job_type": null,
+  "location_type": null,
+  "city": null,
+  "state": null,
+  "country": null,
+  "salary_from": null,
+  "salary_to": null,
+  "currency": null,
+  "period": null,
+  "job_description": null,
+  "job_requirements": null,
+  "job_schema": {
+    "name": true,
+    "email": true,
+    "phone": false,
+    "resume_url": true,
+    "gender": true,
+    "address": true,
+    "cover_letter_url": false,
+    "dob": true,
+    "education": true,
+    "experience": true,
+    "skills": true
+  }
+}

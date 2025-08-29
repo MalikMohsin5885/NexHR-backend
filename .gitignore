@@ -1,0 +1,44 @@
+# Python bytecode files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Django files
+*.log
+*.pot
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+db.sqlite3
+/static/
+media/
+
+# Environment files
+.env
+*.env
+
+# Virtual environment
+venv/
+env/
+.env/
+
+# IDE/editor specific files
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# PyCharm
+*.iml
+
+# Coverage reports
+.coverage
+coverage.xml
+*.cover
+
+
+# txt
+db_queries.txt
+linkedin_request_sample.txt
