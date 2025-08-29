@@ -3,7 +3,9 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status, generics
 from accounts.models import User, CompanyLinkedInAuth, Company, Branch, Department
-from .models import JobDetails, Role, UserRoles
+from .models import Role, UserRoles
+from recruitment.models import JobDetails
+
 from accounts.serializers import UserWithRolesPermissionsSerializer, CSVUserSerializer, UserSerializer
 from .serializers import RoleCreateSerializer, PermissionCreateSerializer, AssignPermissionToRoleSerializer, AssignRoleToUserSerializer, JobDetailsSerializer, JobListSerializer
 from rest_framework import status, permissions

@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Role, Permission, RolePermissions, JobDetails
+from .models import Role, Permission, RolePermissions
+from recruitment.models import JobDetails
 from accounts.models import User
 from api.models import UserRoles
 
