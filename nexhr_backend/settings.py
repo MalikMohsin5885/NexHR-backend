@@ -181,8 +181,10 @@ EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv("GMAIL_USER")
-EMAIL_HOST_PASSWORD = os.getenv("GMAIL_PASSWORD")
+EMAIL_HOST_USER = "solutions.nexhr@gmail.com"
+EMAIL_HOST_PASSWORD = "jdtsvnejhbiweqnh"
+# EMAIL_HOST_USER = os.getenv("GMAIL_USER")
+# EMAIL_HOST_PASSWORD = os.getenv("GMAIL_PASSWORD")
 
 REST_AUTH_REGISTER_SERIALIZERS = {
     "REGISTER_SERIALIZER": "accounts.serializers.CustomRegisterSerializer",
@@ -225,8 +227,18 @@ SOCIALACCOUNT_PROVIDERS = {
 }
 
 
-
-
 LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
 LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
 LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")
+
+
+
+if os.getenv("DOCKERIZED") == "1":
+    # Running inside Docker
+    CELERY_BROKER_URL = "redis://redis:6379/0"
+    CELERY_RESULT_BACKEND = "redis://redis:6379/0"
+else:
+    # Running locally on your PC
+    CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+    CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+
