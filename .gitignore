@@ -38,8 +38,6 @@ env/
 coverage.xml
 *.cover
 
-# Migrations
-migrations/
 
 # txt
 db_queries.txt

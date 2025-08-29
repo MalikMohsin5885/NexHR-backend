@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.contrib.contenttypes.models import ContentType
+
 class Company(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255)
