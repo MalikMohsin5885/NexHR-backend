@@ -37,7 +37,7 @@ class JobDetails(models.Model):
     description = models.TextField(max_length=500, null=True)
     status = models.CharField(max_length=50)
 
-    experience_level = models.CharField(max_length=50)
+    experience_level = models.IntegerField()
     # Store embeddings of job description
     description_embedding = VectorField(dimensions=768, null=True)  
     # (dim depends on the model, e.g. all-MiniLM-L6-v2 → 384, bge-large → 1024, OpenAI → 1536)
@@ -63,15 +63,13 @@ class JobDetailSkill(models.Model):
 
 
 
-# Applications to jobs
 class JobApplication(models.Model):
     id = models.AutoField(primary_key=True)
-    job = models.ForeignKey(JobDetails, on_delete=models.CASCADE, related_name='applications')
+    job = models.ForeignKey("JobDetails", on_delete=models.CASCADE, related_name='applications')
     candidate_fname = models.CharField(max_length=255)
     candidate_lname = models.CharField(max_length=255, null=True)
     email = models.EmailField(null=True)
     phone = models.CharField(max_length=20, null=True)
-    resume_url = models.TextField()
 
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -86,17 +84,24 @@ class JobApplication(models.Model):
     gender = models.CharField(max_length=20)
     address = models.TextField()
     dob = models.DateField()
-    cover_letter = models.TextField(null=True)
-    
+
+    # Cover letter optional now
+    cover_letter = models.TextField(null=True, blank=True)
+
     # Store extracted plain text from resume for quick ref
     resume_text = models.TextField(blank=True, null=True)
 
     # Embedding of candidate profile (resume + cover letter + form fields)
     profile_embedding = VectorField(dimensions=768, null=True)
+    # screening fields (all optional until screening runs)
+    similarity_score = models.FloatField(null=True, blank=True)         # cosine similarity JD↔profile
+    skills_coverage = models.FloatField(null=True, blank=True)          # 0..1
+    experience_score = models.FloatField(null=True, blank=True)         # 0..1
+    final_score = models.FloatField(null=True, blank=True)              # 0..1
+    screening_summary = models.TextField(null=True, blank=True)         # Gemini summary
 
     def __str__(self):
         return f"{self.candidate_fname} {self.candidate_lname}"
-
 
 # Candidate skills per application
 class CandidateSkill(models.Model):

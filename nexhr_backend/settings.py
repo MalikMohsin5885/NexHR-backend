@@ -53,7 +53,8 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
-        
+    "pgvector.django",
+    
     'corsheaders',
     "accounts",
     "recruitment",
@@ -101,14 +102,13 @@ WSGI_APPLICATION = 'nexhr_backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'nexhr_db',  # Your database name
-        'USER': 'nexhr_user',  # Your PostgreSQL username
-        'PASSWORD': 'your_secure_password',  # Your PostgreSQL password
-        'HOST': 'localhost',  # Set to the database host
-        'PORT': '5432',  # Default PostgreSQL port
+        'NAME': os.getenv('POSTGRES_DB', 'nexhr_db'),
+        'USER': os.getenv('POSTGRES_USER', 'nexhr_user'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'your_secure_password'),
+        'HOST': os.getenv('POSTGRES_HOST', 'postgres'),  # 👈 use service name not localhost
+        'PORT': os.getenv('POSTGRES_PORT', '5432'),
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators

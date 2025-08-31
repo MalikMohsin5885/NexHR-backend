@@ -6,11 +6,14 @@ from .views import (
     CreatePermissionView,
     AssignRoleToUserView,
     AssignPermissionToRoleView, 
+    CompanyUsersView
+)
+from recruitment.views import (
     CreateJobPostView, 
     ListJobView,
     PostJobToLinkedInView, 
-    EmployeeCSVImportView, 
-    CompanyUsersView
+    EmployeeCSVImportView,
+    JobApplicationView, 
 )
 urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
@@ -26,6 +29,10 @@ urlpatterns = [
     path('jobs/list/', ListJobView.as_view(), name='jobs-list'),
     
     path('post-job-linkedin/', PostJobToLinkedInView.as_view(), name='post-job-linkedin'),
+    
+    
+    path('applications/', JobApplicationView.as_view(), name='job-application-create'),
+
     
     path('import-employees/', EmployeeCSVImportView.as_view(), name='import-employees'),
     path('company-users/', CompanyUsersView.as_view(), name='company-users'),

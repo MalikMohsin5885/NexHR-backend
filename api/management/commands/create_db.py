@@ -56,6 +56,10 @@ class Command(BaseCommand):
             cur.execute(f"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {db_user}")
             cur.execute(f"GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO {db_user}")
 
+            # ✅ Enable pgvector extension
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            self.stdout.write(self.style.SUCCESS("pgvector extension enabled successfully"))
+
             self.stdout.write(self.style.SUCCESS("PostgreSQL setup completed successfully"))
 
             cur.close()
