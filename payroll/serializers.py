@@ -1,5 +1,8 @@
 from rest_framework import serializers
-from .models import SalaryStructure, Payroll, Payslip, EmployeeAttendance, LeaveRecord, Notification
+from .models import (
+    SalaryStructure, Payroll, Payslip,
+    EmployeeAttendance, LeaveRecord, Notification
+)
 
 
 class SalaryStructureSerializer(serializers.ModelSerializer):

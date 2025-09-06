@@ -1,21 +1,29 @@
+from decimal import Decimal
 import stripe
+import logging
 from django.conf import settings
+from django.utils import timezone
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets, status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 
-from .models import SalaryStructure, Payroll, Payslip, EmployeeAttendance, LeaveRecord, Notification
+from .models import (
+    SalaryStructure, Payroll, Payslip,
+    EmployeeAttendance, LeaveRecord, Notification
+)
 from .serializers import (
     SalaryStructureSerializer, PayrollSerializer, PayslipSerializer,
     EmployeeAttendanceSerializer, LeaveRecordSerializer, NotificationSerializer
 )
+from .utils import calc_attendance_leave_deductions, generate_payslip_pdf
 
+logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-# ------------------- CRUD VIEWS -------------------
+# CRUD ViewSets
 class SalaryStructureViewSet(viewsets.ModelViewSet):
     queryset = SalaryStructure.objects.all()
     serializer_class = SalaryStructureSerializer
@@ -24,6 +32,25 @@ class SalaryStructureViewSet(viewsets.ModelViewSet):
 class PayrollViewSet(viewsets.ModelViewSet):
     queryset = Payroll.objects.all()
     serializer_class = PayrollSerializer
+
+    @action(detail=True, methods=["post"], url_path="calculate")
+    def calculate(self, request, pk=None):
+        payroll = self.get_object()
+        s = payroll.salary_structure
+        if not s:
+            return Response({"detail": "No SalaryStructure linked"}, status=400)
+
+        dynamic_deduction = calc_attendance_leave_deductions(payroll)
+        gross = (s.basic_pay + s.allowances).quantize(Decimal("0.01"))
+        total_deductions = (s.deductions + dynamic_deduction + s.tax).quantize(Decimal("0.01"))
+        net = (gross - total_deductions).quantize(Decimal("0.01"))
+
+        payroll.gross_salary = gross
+        payroll.total_deductions = total_deductions
+        payroll.net_salary = net
+        payroll.save()
+
+        return Response(PayrollSerializer(payroll).data)
 
 
 class PayslipViewSet(viewsets.ModelViewSet):
@@ -46,57 +73,70 @@ class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
 
 
-# ------------------- STRIPE -------------------
+# Stripe Checkout
 @api_view(["POST"])
 def create_checkout_session(request, payroll_id):
     try:
         payroll = Payroll.objects.get(id=payroll_id)
-
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": f"Payroll for {payroll.employee.email}",
-                    },
-                    "unit_amount": int(payroll.net_salary * 100),  # cents
-                },
-                "quantity": 1,
-            }],
-            mode="payment",
-            success_url="http://localhost:3000/success",
-            cancel_url="http://localhost:3000/cancel",
-            metadata={"payroll_id": payroll.id},
-        )
-
-        return Response({"id": session.id, "url": session.url})
-
     except Payroll.DoesNotExist:
-        return Response({"error": "Payroll not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "Payroll not found"}, status=404)
+
+    if payroll.payment_status == "PAID":
+        return Response({"error": "Already paid"}, status=400)
+
+    amount_cents = int(Decimal(payroll.net_salary) * 100)
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {"name": f"Payroll for {payroll.employee.email}"},
+                "unit_amount": amount_cents,
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
+        success_url="http://localhost:3000/success",
+        cancel_url="http://localhost:3000/cancel",
+        metadata={"payroll_id": str(payroll.id)},
+    )
+    return Response({"id": session.id, "url": session.url})
 
 
+# Stripe Webhook
 @csrf_exempt
 def stripe_webhook(request):
     payload = request.body
     sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
+    endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
-        )
-    except stripe.error.SignatureVerificationError:
+        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
+    except Exception as e:
+        logger.exception("Invalid Stripe webhook: %s", e)
         return HttpResponse(status=400)
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        payroll_id = session["metadata"]["payroll_id"]
+        payroll_id = session.get("metadata", {}).get("payroll_id")
+        if payroll_id:
+            try:
+                payroll = Payroll.objects.get(id=payroll_id)
+                payroll.payment_status = "PAID"
+                payroll.paid_on = timezone.now().date()
+                payroll.save()
 
-        try:
-            payroll = Payroll.objects.get(id=payroll_id)
-            payroll.payment_status = "PAID"
-            payroll.save()
-        except Payroll.DoesNotExist:
-            pass
+                pdf_url = generate_payslip_pdf(payroll)
+                Payslip.objects.update_or_create(
+                    payroll=payroll,
+                    defaults={"payslip_pdf_url": pdf_url}
+                )
+                Notification.objects.create(
+                    employee=payroll.employee,
+                    message=f"Payroll {payroll_id} has been marked as PAID."
+                )
+                logger.info("Payroll %s marked PAID", payroll.id)
+            except Payroll.DoesNotExist:
+                logger.error("Payroll %s not found", payroll_id)
 
     return HttpResponse(status=200)

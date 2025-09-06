@@ -26,9 +26,9 @@ class Payroll(models.Model):
     )
     period_start = models.DateField()
     period_end = models.DateField()
-    gross_salary = models.DecimalField(max_digits=10, decimal_places=2)
+    gross_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_deductions = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    net_salary = models.DecimalField(max_digits=10, decimal_places=2)
+    net_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     payment_status = models.CharField(
         max_length=20,
         choices=[("PENDING", "Pending"), ("PAID", "Paid"), ("FAILED", "Failed")],
@@ -42,7 +42,7 @@ class Payroll(models.Model):
 
 class Payslip(models.Model):
     payroll = models.OneToOneField(Payroll, on_delete=models.CASCADE, related_name="payslip")
-    payslip_pdf_url = models.URLField()
+    payslip_pdf_url = models.URLField(null=True, blank=True)
     issued_on = models.DateField(auto_now_add=True)
 
     def __str__(self):
@@ -68,7 +68,7 @@ class LeaveRecord(models.Model):
     employee = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="leaves"
     )
-    leave_type = models.CharField(max_length=50)
+    leave_type = models.CharField(max_length=50)  # "UNPAID", "SICK", etc.
     from_date = models.DateField()
     to_date = models.DateField()
     approved_by = models.ForeignKey(
