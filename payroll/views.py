@@ -5,6 +5,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
@@ -23,12 +24,22 @@ logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
+# --- Decorator to exempt CSRF for ViewSets ---
+def csrf_exempt_class(view):
+    """Decorator to exempt CSRF for all ViewSet actions."""
+    decorator = method_decorator(csrf_exempt)
+    view.dispatch = decorator(view.dispatch)
+    return view
+
+
 # CRUD ViewSets
+@csrf_exempt_class
 class SalaryStructureViewSet(viewsets.ModelViewSet):
     queryset = SalaryStructure.objects.all()
     serializer_class = SalaryStructureSerializer
 
 
+@csrf_exempt_class
 class PayrollViewSet(viewsets.ModelViewSet):
     queryset = Payroll.objects.all()
     serializer_class = PayrollSerializer
@@ -40,6 +51,7 @@ class PayrollViewSet(viewsets.ModelViewSet):
         if not s:
             return Response({"detail": "No SalaryStructure linked"}, status=400)
 
+        # Dynamic deduction from attendance/leave
         dynamic_deduction = calc_attendance_leave_deductions(payroll)
         gross = (s.basic_pay + s.allowances).quantize(Decimal("0.01"))
         total_deductions = (s.deductions + dynamic_deduction + s.tax).quantize(Decimal("0.01"))
@@ -53,28 +65,32 @@ class PayrollViewSet(viewsets.ModelViewSet):
         return Response(PayrollSerializer(payroll).data)
 
 
+@csrf_exempt_class
 class PayslipViewSet(viewsets.ModelViewSet):
     queryset = Payslip.objects.all()
     serializer_class = PayslipSerializer
 
 
+@csrf_exempt_class
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = EmployeeAttendance.objects.all()
     serializer_class = EmployeeAttendanceSerializer
 
 
+@csrf_exempt_class
 class LeaveRecordViewSet(viewsets.ModelViewSet):
     queryset = LeaveRecord.objects.all()
     serializer_class = LeaveRecordSerializer
 
 
+@csrf_exempt_class
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
 
 
-# Stripe Checkout
-@csrf_exempt   # ✅ Add this
+# --- Stripe Checkout ---
+@csrf_exempt
 @api_view(["POST"])
 def create_checkout_session(request, payroll_id):
     try:
@@ -104,7 +120,7 @@ def create_checkout_session(request, payroll_id):
     return Response({"id": session.id, "url": session.url})
 
 
-# Stripe Webhook
+# --- Stripe Webhook ---
 @csrf_exempt
 def stripe_webhook(request):
     payload = request.body
@@ -127,16 +143,20 @@ def stripe_webhook(request):
                 payroll.paid_on = timezone.now().date()
                 payroll.save()
 
+                # Generate and attach payslip
                 pdf_url = generate_payslip_pdf(payroll)
                 Payslip.objects.update_or_create(
                     payroll=payroll,
                     defaults={"payslip_pdf_url": pdf_url}
                 )
+
+                # Notify employee
                 Notification.objects.create(
                     employee=payroll.employee,
                     message=f"Payroll {payroll_id} has been marked as PAID."
                 )
                 logger.info("Payroll %s marked PAID", payroll.id)
+
             except Payroll.DoesNotExist:
                 logger.error("Payroll %s not found", payroll_id)
 
