@@ -2,8 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     SalaryStructureViewSet, PayrollViewSet, PayslipViewSet,
-    AttendanceViewSet, LeaveRecordViewSet, NotificationViewSet,
-    create_checkout_session, stripe_webhook
+    AttendanceViewSet, LeaveRecordViewSet, NotificationViewSet, 
+    create_checkout_session, stripe_webhook,
 )
 
 router = DefaultRouter()
@@ -16,6 +16,8 @@ router.register(r'notifications', NotificationViewSet)
 
 urlpatterns = [
     path("", include(router.urls)),
-    path("payroll/<int:payroll_id>/checkout/", create_checkout_session, name="stripe-checkout"),
+    path("<int:payroll_id>/checkout/", create_checkout_session, name="stripe-checkout"),
     path("webhook/stripe/", stripe_webhook, name="stripe-webhook"),
+    
+
 ]

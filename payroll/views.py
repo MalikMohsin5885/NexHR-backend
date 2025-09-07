@@ -74,6 +74,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
 
 # Stripe Checkout
+@csrf_exempt   # ✅ Add this
 @api_view(["POST"])
 def create_checkout_session(request, payroll_id):
     try:
