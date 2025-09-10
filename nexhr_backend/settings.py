@@ -102,7 +102,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'nexhr_db',  # Your database name
         'USER': 'nexhr_user',  # Your PostgreSQL username
-        'PASSWORD': 'your_secure_password',  # Your PostgreSQL password
+        'PASSWORD': 'Mohsin',  # Your PostgreSQL password
         'HOST': 'localhost',  # Set to the database host
         'PORT': '5432',  # Default PostgreSQL port
     }

@@ -9,6 +9,8 @@ scripts:
     - python manage.py migrate
   seed_db:
     - python manage.py seed_db
+  company_seed_db:
+    - python manage.py company_seeder
   freeze_requirements:
     - uv pip freeze > requirements.txt
   create_superuser:
