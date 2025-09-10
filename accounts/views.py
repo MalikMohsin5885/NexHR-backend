@@ -506,7 +506,7 @@ class LinkedInTokenView(APIView):
             print("timedelta(seconds=expires_in)----------",timedelta(seconds=expires_in))
             print("expires_at-----",expires_at)
             
-             # Step 2: Fetch LinkedIn user info using access token
+            # Step 2: Fetch LinkedIn user info using access token
             userinfo_response = requests.get(
                 'https://api.linkedin.com/v2/userinfo',
                 headers={

@@ -102,11 +102,11 @@ WSGI_APPLICATION = 'nexhr_backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'nexhr_db'),
-        'USER': os.getenv('POSTGRES_USER', 'nexhr_user'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'your_secure_password'),
-        'HOST': os.getenv('POSTGRES_HOST', 'postgres'),  # 👈 use service name not localhost
-        'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        'NAME': os.getenv('POSTGRES_DB') or os.getenv('DB_NAME', 'nexhr_db'),
+        'USER': os.getenv('POSTGRES_USER') or os.getenv('DB_USER', 'nexhr_user'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD') or os.getenv('DB_PASSWORD', 'Mohsin'),
+        'HOST': os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT', '5432'),
     }
 }
 
@@ -182,7 +182,7 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "solutions.nexhr@gmail.com"
-EMAIL_HOST_PASSWORD = "jdtsvnejhbiweqnh"
+EMAIL_HOST_PASSWORD = "nvpkbwgtgbuodoge"
 # EMAIL_HOST_USER = os.getenv("GMAIL_USER")
 # EMAIL_HOST_PASSWORD = os.getenv("GMAIL_PASSWORD")
 
@@ -232,13 +232,33 @@ LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
 LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")
 
 
+# if os.getenv("DOCKERIZED") == "1":
+#     CELERY_BROKER_URL = "redis://redis:6379/0"
+#     CELERY_RESULT_BACKEND = "redis://redis:6379/0"
+# else:
+#     CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+#     CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
 
-if os.getenv("DOCKERIZED") == "1":
-    # Running inside Docker
-    CELERY_BROKER_URL = "redis://redis:6379/0"
-    CELERY_RESULT_BACKEND = "redis://redis:6379/0"
-else:
-    # Running locally on your PC
-    CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
-    CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+# Detect if running inside Docker by checking hostname or env variable
 
+
+# DOCKERIZED = os.getenv("DOCKERIZED", "0") == "1"
+
+# if DOCKERIZED:
+#     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL_CONTAINER")
+#     CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND_CONTAINER")
+# else:
+#     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL_HOST")
+#     CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND_HOST")
+
+# print(f"DOCKERIZED={DOCKERIZED}")
+# print(f"CELERY_BROKER_URL={CELERY_BROKER_URL}")
+# print(f"CELERY_RESULT_BACKEND={CELERY_RESULT_BACKEND}")
+
+
+
+
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", os.getenv("REDIS_URL"))
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", os.getenv("REDIS_URL"))
+
+CELERY_BROKER_TRANSPORT_OPTIONS = {"max_connections": 5}

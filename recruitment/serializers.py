@@ -1,7 +1,6 @@
 from .models import JobDetails, JobApplication, CandidateSkill, CandidateExperience, CandidateEducation
 from rest_framework import serializers
 
-
 class JobDetailsSerializer(serializers.ModelSerializer):
     job_description = serializers.CharField(write_only=True)
     job_requirements = serializers.CharField(write_only=True, required=False)  # optional
@@ -26,11 +25,14 @@ class JobDetailsSerializer(serializers.ModelSerializer):
             'job_schema',
             'experience_level',
             'department',
+            'job_deadline',   # ✅ accept datetime from payload
         ]
 
-    def validate(self, data):
-        return data
-
+    def validate_job_deadline(self, value):
+        from django.utils.timezone import now
+        if value <= now():
+            raise serializers.ValidationError("Deadline must be in the future.")
+        return value
 
 class JobListSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source='company.name', read_only=True)

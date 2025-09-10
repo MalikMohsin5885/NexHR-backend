@@ -28,6 +28,7 @@ class CreateJobPostView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        print("resquest data-------------------",request.data)
         serializer = JobDetailsSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             data = serializer.validated_data
@@ -36,6 +37,12 @@ class CreateJobPostView(APIView):
             description = data.pop('job_description')
             requirements = data.pop('job_requirements', None)
             department_name = data.pop('department')
+            job_deadline = data.pop('job_deadline')   # ✅ from payload
+            print("Job Deadline-=-=-=-:", job_deadline)
+
+            user = request.user
+            company = getattr(user, 'company', None)
+            branch = getattr(user, 'branch', None)
 
             user = request.user
             company = getattr(user, 'company', None)
@@ -59,9 +66,9 @@ class CreateJobPostView(APIView):
                 branch=branch,
                 department=department,
                 status='active',
-                job_deadline=now() + timedelta(days=30),
+                job_deadline=job_deadline, 
             )
-
+            print("Job Deadline:", job.job_deadline)
             # If you want to store requirements, add a field in model OR keep it in job_schema
             if requirements:
                 job.job_schema['requirements'] = requirements
@@ -257,3 +264,17 @@ class JobApplicationView(APIView):
             return Response(JobApplicationSerializer(app).data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
+    
+
+class RunScreeningNowView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, job_id):
+        screen_job_after_deadline.delay(job_id)
+        return Response(
+            {"message": f"Screening queued for job {job_id}"},
+            status=status.HTTP_200_OK
+        )
+

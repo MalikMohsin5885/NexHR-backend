@@ -13,7 +13,8 @@ from recruitment.views import (
     ListJobView,
     PostJobToLinkedInView, 
     EmployeeCSVImportView,
-    JobApplicationView, 
+    JobApplicationView,
+    RunScreeningNowView, 
 )
 urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
@@ -32,7 +33,8 @@ urlpatterns = [
     
     
     path('applications/', JobApplicationView.as_view(), name='job-application-create'),
-
+    
+    path("jobs/<int:job_id>/screen/", RunScreeningNowView.as_view(), name="job-screen-now"),
     
     path('import-employees/', EmployeeCSVImportView.as_view(), name='import-employees'),
     path('company-users/', CompanyUsersView.as_view(), name='company-users'),

@@ -16,7 +16,14 @@ from .embeddings import embed_text, cosine_sim, build_candidate_profile_text
 from .summarize import summarize_candidate
 
 @shared_task
+def test_task():
+    print("✅ Celery task executed successfully!")
+    return "ok"
+
+
+@shared_task
 def send_invitation_email_task(user_email, fname, temp_password):
+    print(f"Sending invitation email to {user_email}")
     subject = "Welcome to NexHR - Your Account Details"
     message = f"""Hi {fname},
 
@@ -112,6 +119,7 @@ def embed_application_profile(app_id: int):
     app.save(update_fields=["profile_embedding"])
     print(f"[Embed App] Embedded application {app_id}")
 
+
 @shared_task
 def screen_job_after_deadline(job_id: int):
     """Run screening for a single job, ONLY if deadline passed."""
@@ -126,12 +134,19 @@ def screen_job_after_deadline(job_id: int):
         print(f"[Screen] Job {job_id} not screened (deadline not reached)")
         return
 
+    # --- Ensure job has embedding ---
     if job.description_embedding is None:
         print(f"[Screen] Job {job_id} has no embedding; embedding now...")
         embed_job_description(job_id)
+        job.refresh_from_db()  # re-fetch updated embedding
 
-    jd_vec = np.array(job.description_embedding or [0.0]*768, dtype=float)
+    if job.description_embedding is None:
+        print(f"[Screen] Job {job_id} still missing embedding, aborting.")
+        return
 
+    jd_vec = np.array(job.description_embedding, dtype=float)
+
+    # --- Prefetch related candidate data ---
     apps = JobApplication.objects.filter(job=job).prefetch_related(
         Prefetch("skills", queryset=CandidateSkill.objects.all()),
         Prefetch("experiences", queryset=CandidateExperience.objects.all()),
@@ -141,10 +156,18 @@ def screen_job_after_deadline(job_id: int):
     print(f"[Screen] Starting screening for job {job_id} with {apps.count()} applications")
 
     for app in apps:
+        # --- Ensure candidate embedding ---
         if app.profile_embedding is None:
             embed_application_profile(app.id)
+            app.refresh_from_db()
 
-        cand_vec = np.array(app.profile_embedding or [0.0]*768, dtype=float)
+        if app.profile_embedding is None:
+            print(f"[Screen] App {app.id} missing embedding, skipping.")
+            continue
+
+        cand_vec = np.array(app.profile_embedding, dtype=float)
+
+        # --- Calculate scores ---
         sim = cosine_sim(jd_vec, cand_vec)
         skills_cov = _skills_coverage(job, app)
         exp_score = _experience_score(job, app)
@@ -152,7 +175,6 @@ def screen_job_after_deadline(job_id: int):
         final = (W_SIM * sim) + (W_SKILLS * skills_cov) + (W_EXP * exp_score)
         final = max(0.0, min(1.0, final))
 
-        # Build a short breakdown for summary
         breakdown = {
             "semantic_similarity": round(sim, 4),
             "skills_coverage": round(skills_cov, 4),
@@ -160,21 +182,33 @@ def screen_job_after_deadline(job_id: int):
             "final_score": round(final, 4),
         }
 
-        # Optional Gemini summary (only if final >= threshold to save tokens)
-        candidate_text = ""
-        if final >= SHORTLIST_THRESHOLD:
-            candidate_text = build_candidate_profile_text(app)
-            summary = summarize_candidate(
-                jd_text=(job.description or ""),
-                candidate_text=candidate_text,
-                breakdown=breakdown,
-            )
-        else:
-            summary = ""
+        # --- Candidate summary (optional) ---
+        # if final >= SHORTLIST_THRESHOLD:
+        #     candidate_text = build_candidate_profile_text(app)
+        #     print("[Screen] Candidate profile text:", candidate_text[:200], "...")
+        #     summary = summarize_candidate(
+        #         jd_text=(job.description or ""),
+        #         candidate_text=candidate_text,
+        #         breakdown=breakdown,
+        #     )
+        #     print("[Screen] Gemini summary generated:", summary[:200], "...")
+        # else:
+        #     summary = ""
+        #     print("[Screen] No summary generated (below threshold)")
+        
+        candidate_text = build_candidate_profile_text(app)
+        print("[Screen] Candidate profile text:", candidate_text[:200], "...")
+        summary = summarize_candidate(
+            jd_text=(job.description or ""),
+            candidate_text=candidate_text,
+            breakdown=breakdown,
+        )
+        print("[Screen] Gemini summary generated:", summary[:200], "...")
 
-        # Decide status
+        # --- Decide status ---
         new_status = "shortlisted" if final >= SHORTLIST_THRESHOLD else "reviewed"
 
+        # --- Save results atomically ---
         with transaction.atomic():
             app.similarity_score = sim
             app.skills_coverage = skills_cov
@@ -183,14 +217,21 @@ def screen_job_after_deadline(job_id: int):
             app.screening_summary = summary
             app.status = new_status
             app.save(update_fields=[
-                "similarity_score","skills_coverage","experience_score",
-                "final_score","screening_summary","status"
+                "similarity_score",
+                "skills_coverage",
+                "experience_score",
+                "final_score",
+                "screening_summary",
+                "status",
             ])
+        print("[Screen] Saved app", app.id, "summary length:", len(summary))
 
-        # Minimal logging
         print(f"[Screen] App {app.id}: sim={sim:.3f}, skills={skills_cov:.2f}, exp={exp_score:.2f}, final={final:.3f}, status={new_status}")
 
     print(f"[Screen] Completed screening for job {job_id}")
+
+
+
 
 @shared_task
 def screen_all_due_jobs():

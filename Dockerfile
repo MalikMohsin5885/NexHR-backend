@@ -1,7 +1,7 @@
 # Use stable Python base
 FROM python:3.11-slim-bullseye
 
-# Set workdir
+# Set working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -21,8 +21,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY . .
 
-# Expose Django/Gunicorn port
-EXPOSE 8000
-
-# Run Gunicorn server by default
-CMD ["gunicorn", "nexhr_backend.wsgi:application", "--bind", "0.0.0.0:8000", "--workers=4", "--threads=2", "--timeout=120"]
+# Set default CMD to run Celery worker (can be overridden in docker-compose)
+CMD ["celery", "-A", "nexhr_backend", "worker", "-l", "info"]
