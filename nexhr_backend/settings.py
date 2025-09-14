@@ -45,6 +45,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "nexhr_backend.middlewares.DisableCSRFMiddleware",  # ✅ added
+      
 ]
 
 ROOT_URLCONF = "nexhr_backend.urls"
@@ -150,3 +151,55 @@ GOOGLE_OAUTH_CALLBACK_URL = os.getenv("GOOGLE_OAUTH_CALLBACK_URL", "")
 LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID", "")
 LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET", "")
 LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI", "")
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = "solutions.nexhr@gmail.com"  # shown as sender
+
+# =========================
+# Email Settings (Gmail SMTP)
+# =========================
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "solutions.nexhr@gmail.com"
+EMAIL_HOST_PASSWORD = "nvpkbwgtgbuodoge"  # Gmail App Password
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+
+
+
+
+
+
+# Allow your frontend URL to talk to backend
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",   # for local Next.js
+    "http://127.0.0.1:3000",
+    "https://your-frontend-domain.com",
+     "https://lovable.dev", # production
+     "https://08bd1539f41b.ngrok-free.app",
+]
+
+# If you want to allow all origins during dev (not recommended for prod):
+# CORS_ALLOW_ALL_ORIGINS = True
+
+ALLOWED_HOSTS = [
+    "127.0.0.1",
+    "localhost",
+    "lovable.dev",
+    "08bd1539f41b.ngrok-free.app",
+    "https://preview--payroll-quest.lovable.app",
+]
+CORS_ALLOW_ALL_ORIGINS = True
+
+
+# media (payslips)
+from pathlib import Path
+BASE_DIR = Path(__file__).resolve().parent.parent
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"

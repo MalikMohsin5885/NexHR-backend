@@ -17,7 +17,7 @@ router.register(r'notifications', NotificationViewSet)
 urlpatterns = [
     path("", include(router.urls)),
     path("<int:payroll_id>/checkout/", create_checkout_session, name="stripe-checkout"),
-    path("webhook/stripe/", stripe_webhook, name="stripe-webhook"),
+    path("stripe/webhook/", stripe_webhook, name="stripe-webhook"),  # ✅
     
 
 ]
