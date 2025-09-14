@@ -25,6 +25,15 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.CreateModel(
+            name='Permission',
+            fields=[
+                ('id', models.AutoField(primary_key=True, serialize=False)),
+                ('name', models.CharField(max_length=255, unique=True)),
+                ('description', models.TextField(blank=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+            ],
+        ),
+        migrations.CreateModel(
             name='Branch',
             fields=[
                 ('id', models.AutoField(primary_key=True, serialize=False)),
@@ -71,8 +80,12 @@ class Migration(migrations.Migration):
                 ('access_token', models.TextField(blank=True, null=True)),
                 ('id_token', models.TextField(blank=True, null=True)),
                 ('person_urn', models.TextField(blank=True, null=True)),
+                ('access_token', models.TextField(blank=True, null=True)),
+                ('id_token', models.TextField(blank=True, null=True)),
+                ('person_urn', models.TextField(blank=True, null=True)),
                 ('expires_at', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(blank=True, null=True)),
                 ('updated_at', models.DateTimeField(blank=True, null=True)),
                 ('company', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='linkedin_auth', to='accounts.company')),
                 ('user', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
@@ -90,5 +103,20 @@ class Migration(migrations.Migration):
             model_name='user',
             name='department',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='accounts.department'),
+        ),
+        migrations.CreateModel(
+            name='Role',
+            fields=[
+                ('id', models.AutoField(primary_key=True, serialize=False)),
+                ('name', models.CharField(max_length=255, unique=True)),
+                ('description', models.TextField(blank=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('permissions', models.ManyToManyField(blank=True, related_name='roles', to='accounts.permission')),
+            ],
+        ),
+        migrations.AddField(
+            model_name='user',
+            name='roles',
+            field=models.ManyToManyField(blank=True, related_name='users', to='accounts.role'),
         ),
     ]
