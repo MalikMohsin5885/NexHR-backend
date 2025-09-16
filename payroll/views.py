@@ -1,46 +1,68 @@
-# views.py
-
 from decimal import Decimal
 import stripe
 import logging
 import json
+from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from pathlib import Path
 
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 
-from .models import SalaryStructure, Payroll, Payslip, EmployeeAttendance, LeaveRecord, Notification
+from .models import (
+    SalaryStructure, Payroll, Payslip,
+    EmployeeAttendance, LeaveRecord, Notification,
+    TaxBracket, StatutoryDeduction
+)
 from .serializers import (
     SalaryStructureSerializer, PayrollSerializer, PayslipSerializer,
-    EmployeeAttendanceSerializer, LeaveRecordSerializer, NotificationSerializer
+    EmployeeAttendanceSerializer, LeaveRecordSerializer, NotificationSerializer,
+    TaxBracketSerializer, StatutoryDeductionSerializer
 )
-from .utils import calc_attendance_leave_deductions, generate_payslip_pdf, send_payslip_email
+from .utils import (
+    calc_attendance_leave_deductions,
+    generate_payslip_pdf,
+    send_payslip_email,
+    calculate_tax,
+    calculate_statutory_deductions,
+)
 
 logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
 def csrf_exempt_class(view):
-    """Exempt CSRF for all ViewSet actions."""
     from django.utils.decorators import method_decorator
     decorator = method_decorator(csrf_exempt)
     view.dispatch = decorator(view.dispatch)
     return view
 
 
-# --- Your existing ViewSets ---
+# --- Salary Structures ---
 @csrf_exempt_class
 class SalaryStructureViewSet(viewsets.ModelViewSet):
     queryset = SalaryStructure.objects.all()
     serializer_class = SalaryStructureSerializer
 
 
+# --- Tax & Statutory ---
+@csrf_exempt_class
+class TaxBracketViewSet(viewsets.ModelViewSet):
+    queryset = TaxBracket.objects.all()
+    serializer_class = TaxBracketSerializer
+
+
+@csrf_exempt_class
+class StatutoryDeductionViewSet(viewsets.ModelViewSet):
+    queryset = StatutoryDeduction.objects.all()
+    serializer_class = StatutoryDeductionSerializer
+
+
+# --- Payrolls ---
 @csrf_exempt_class
 class PayrollViewSet(viewsets.ModelViewSet):
     queryset = Payroll.objects.all()
@@ -53,37 +75,63 @@ class PayrollViewSet(viewsets.ModelViewSet):
         if not s:
             return Response({"detail": "No SalaryStructure linked"}, status=400)
 
-        dynamic_deduction = calc_attendance_leave_deductions(payroll)
         gross = (s.basic_pay + s.allowances).quantize(Decimal("0.01"))
-        total_deductions = (s.deductions + dynamic_deduction + s.tax).quantize(Decimal("0.01"))
+        tax_amount = calculate_tax(gross)
+        statutory = calculate_statutory_deductions(gross)
+        dynamic_deduction = calc_attendance_leave_deductions(payroll)
+
+        total_deductions = (s.deductions + dynamic_deduction + tax_amount + statutory).quantize(Decimal("0.01"))
         net = (gross - total_deductions).quantize(Decimal("0.01"))
 
         payroll.gross_salary = gross
+        payroll.tax_amount = tax_amount
+        payroll.statutory_deductions = statutory
         payroll.total_deductions = total_deductions
         payroll.net_salary = net
         payroll.save()
 
         return Response(PayrollSerializer(payroll).data)
 
+    # --- NEW: Download Payslip PDF ---
+    @action(detail=True, methods=["get"], url_path="download-payslip")
+    def download_payslip(self, request, pk=None):
+        try:
+            payroll = self.get_object()
+            pdf_buffer = generate_payslip_pdf(payroll)
+            filename = f"payslip_{payroll.id}.pdf"
+            return FileResponse(
+                pdf_buffer,
+                as_attachment=True,
+                filename=filename,
+                content_type="application/pdf",
+            )
+        except Exception as e:
+            logger.exception("Error generating payslip: %s", e)
+            return Response({"error": "Could not generate payslip"}, status=500)
 
+
+# --- Payslips ---
 @csrf_exempt_class
 class PayslipViewSet(viewsets.ModelViewSet):
     queryset = Payslip.objects.all()
     serializer_class = PayslipSerializer
 
 
+# --- Attendance ---
 @csrf_exempt_class
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = EmployeeAttendance.objects.all()
     serializer_class = EmployeeAttendanceSerializer
 
 
+# --- Leaves ---
 @csrf_exempt_class
 class LeaveRecordViewSet(viewsets.ModelViewSet):
     queryset = LeaveRecord.objects.all()
     serializer_class = LeaveRecordSerializer
 
 
+# --- Notifications ---
 @csrf_exempt_class
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
@@ -121,7 +169,7 @@ def create_checkout_session(request, payroll_id):
     return Response({"id": session.id, "url": session.url})
 
 
-# --- Stripe Webhook with Test Bypass ---
+# --- Stripe Webhook ---
 @csrf_exempt
 @require_POST
 def stripe_webhook(request):
@@ -131,16 +179,13 @@ def stripe_webhook(request):
 
     try:
         if sig_header:
-            # ✅ Real Stripe event
             event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
         else:
-            # ✅ Test-only bypass for manual HTTP POST
             event = json.loads(payload)
     except Exception as e:
         logger.exception("Invalid Stripe webhook: %s", e)
         return HttpResponse(status=400)
 
-    # Handle checkout.session.completed
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         payroll_id = session.get("metadata", {}).get("payroll_id")
@@ -152,25 +197,16 @@ def stripe_webhook(request):
                     payroll.paid_on = timezone.now().date()
                     payroll.save()
 
-                    # Generate PDF
-                    pdf_url = generate_payslip_pdf(payroll)
-                    pdf_path = str(Path(settings.MEDIA_ROOT) / pdf_url.replace(settings.MEDIA_URL, ""))
+                    pdf_buffer = generate_payslip_pdf(payroll)
+                    Payslip.objects.update_or_create(payroll=payroll)
+                    send_payslip_email(payroll, pdf_buffer)
 
-                    Payslip.objects.update_or_create(
-                        payroll=payroll,
-                        defaults={"payslip_pdf_url": pdf_url}
-                    )
-
-                    # Send email
-                    send_payslip_email(payroll, pdf_path)
-
-                    # Create notification
                     Notification.objects.create(
                         employee=payroll.employee,
-                        message=f"Payroll {payroll_id} has been marked as PAID."
+                        message=f"Payroll {payroll_id} has been marked as PAID. Payslip emailed."
                     )
 
-                    logger.info("Payroll %s marked PAID and email/pdf sent", payroll.id)
+                    logger.info("Payroll %s marked PAID and detailed payslip emailed", payroll.id)
 
             except Payroll.DoesNotExist:
                 logger.error("Payroll %s not found", payroll_id)

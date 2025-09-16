@@ -17,6 +17,24 @@ class SalaryStructure(models.Model):
         return f"Salary Structure for {self.employee.email}"
 
 
+class TaxBracket(models.Model):
+    min_income = models.DecimalField(max_digits=12, decimal_places=2)
+    max_income = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)  # None = infinity
+    rate = models.DecimalField(max_digits=5, decimal_places=2)  # %
+
+    def __str__(self):
+        return f"{self.min_income} - {self.max_income or '∞'} @ {self.rate}%"
+
+
+class StatutoryDeduction(models.Model):
+    name = models.CharField(max_length=100)
+    rate = models.DecimalField(max_digits=5, decimal_places=2)  # %
+    is_mandatory = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.rate}%)"
+
+
 class Payroll(models.Model):
     employee = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="payrolls"
@@ -26,9 +44,11 @@ class Payroll(models.Model):
     )
     period_start = models.DateField()
     period_end = models.DateField()
-    gross_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    total_deductions = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    net_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    gross_salary = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_deductions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    net_salary = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    statutory_deductions = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     payment_status = models.CharField(
         max_length=20,
         choices=[("PENDING", "Pending"), ("PAID", "Paid"), ("FAILED", "Failed")],
@@ -42,7 +62,6 @@ class Payroll(models.Model):
 
 class Payslip(models.Model):
     payroll = models.OneToOneField(Payroll, on_delete=models.CASCADE, related_name="payslip")
-    payslip_pdf_url = models.URLField(null=True, blank=True)
     issued_on = models.DateField(auto_now_add=True)
 
     def __str__(self):

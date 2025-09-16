@@ -173,7 +173,7 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 
 
-
+CORS_ALLOW_ALL_ORIGINS = True
 
 
 # Allow your frontend URL to talk to backend
@@ -183,6 +183,9 @@ CORS_ALLOWED_ORIGINS = [
     "https://your-frontend-domain.com",
      "https://lovable.dev", # production
      "https://08bd1539f41b.ngrok-free.app",
+     
+     "https://preview--salaryscape-hub.lovable.app/",
+     "https://preview--salaryscape-hub.lovable.app/login/"
 ]
 
 # If you want to allow all origins during dev (not recommended for prod):
@@ -195,7 +198,7 @@ ALLOWED_HOSTS = [
     "08bd1539f41b.ngrok-free.app",
     "https://preview--payroll-quest.lovable.app",
 ]
-CORS_ALLOW_ALL_ORIGINS = True
+
 
 
 # media (payslips)

@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import (
     SalaryStructure, Payroll, Payslip,
-    EmployeeAttendance, LeaveRecord, Notification
+    EmployeeAttendance, LeaveRecord, Notification,
+    TaxBracket, StatutoryDeduction
 )
 
 
@@ -38,4 +39,16 @@ class LeaveRecordSerializer(serializers.ModelSerializer):
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
+        fields = "__all__"
+
+
+class TaxBracketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaxBracket
+        fields = "__all__"
+
+
+class StatutoryDeductionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StatutoryDeduction
         fields = "__all__"
