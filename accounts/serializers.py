@@ -77,14 +77,22 @@ class UserListSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'fname', 'lname', 'phone', 'is_verified', 'company_id']
-
 class UserProfileSerializer(serializers.ModelSerializer):
     company = serializers.CharField(source='company.name', read_only=True)
     department = serializers.CharField(source='department.name', read_only=True)
+    roles = serializers.SlugRelatedField(
+        many=True,
+        read_only=True,
+        slug_field="name"  # ✅ only return role name
+    )
+
     class Meta:
         model = User
-        fields = ['id', 'fname', 'lname', 'email', 'phone', 'status', 'is_verified', 'login_method', 'company', 'department']
-
+        fields = [
+            'id', 'fname', 'lname', 'email', 'phone',
+            'status', 'is_verified', 'login_method',
+            'company', 'department', 'roles'
+        ]
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
