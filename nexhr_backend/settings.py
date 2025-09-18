@@ -155,7 +155,7 @@ LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI", "")
 MEDIA_URL = "/media/"
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+#EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = "solutions.nexhr@gmail.com"  # shown as sender
 
 # =========================
@@ -167,7 +167,7 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "solutions.nexhr@gmail.com"
-EMAIL_HOST_PASSWORD = "nvpkbwgtgbuodoge"  # Gmail App Password
+EMAIL_HOST_PASSWORD = "gkki mrbg kbco pufx"  # Gmail App Password
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 
@@ -178,15 +178,14 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 # Allow your frontend URL to talk to backend
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",   # for local Next.js
+    "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:8080",
     "https://your-frontend-domain.com",
-     "https://lovable.dev", # production
-     "https://08bd1539f41b.ngrok-free.app",
-     
-     "https://preview--salaryscape-hub.lovable.app/",
-     "https://preview--salaryscape-hub.lovable.app/login/"
+    "https://lovable.dev",
+    "https://08bd1539f41b.ngrok-free.app",
 ]
+
 
 # If you want to allow all origins during dev (not recommended for prod):
 # CORS_ALLOW_ALL_ORIGINS = True

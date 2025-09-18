@@ -97,7 +97,7 @@ class PayrollViewSet(viewsets.ModelViewSet):
     def download_payslip(self, request, pk=None):
         try:
             payroll = self.get_object()
-            pdf_buffer = generate_payslip_pdf(payroll)
+            pdf_buffer, _ = generate_payslip_pdf(payroll)
             filename = f"payslip_{payroll.id}.pdf"
             return FileResponse(
                 pdf_buffer,
@@ -162,53 +162,112 @@ def create_checkout_session(request, payroll_id):
             "quantity": 1,
         }],
         mode="payment",
-        success_url=f"{settings.SITE_URL}/success",
+        success_url=f"{settings.SITE_URL}/success?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{settings.SITE_URL}/cancel",
         metadata={"payroll_id": str(payroll.id)},
     )
     return Response({"id": session.id, "url": session.url})
 
 
-# --- Stripe Webhook ---
+# --- Hybrid: Confirm Checkout (Immediate Payslip) ---
+@csrf_exempt
+@api_view(["POST"])
+def confirm_checkout(request):
+    """
+    Called from frontend after redirect to success_url.
+    Verifies payment with Stripe API, then generates payslip instantly.
+    """
+    session_id = request.data.get("session_id")
+    if not session_id:
+        return Response({"error": "Missing session_id"}, status=400)
+
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        payroll_id = session.metadata.get("payroll_id")
+
+        if session.payment_status == "paid" and payroll_id:
+            payroll = Payroll.objects.get(id=payroll_id)
+            if payroll.payment_status != "PAID":
+                payroll.payment_status = "PAID"
+                payroll.paid_on = timezone.now().date()
+                payroll.save()
+
+                pdf_buffer, pdf_url = generate_payslip_pdf(payroll)
+                Payslip.objects.update_or_create(
+                    payroll=payroll,
+                    defaults={"payslip_pdf_url": pdf_url}
+                )
+                send_payslip_email(payroll, pdf_buffer)
+
+                Notification.objects.create(
+                    employee=payroll.employee,
+                    message=f"Payroll {payroll_id} has been marked as PAID. Payslip emailed."
+                )
+
+            return Response({"status": "Payslip generated and emailed"})
+
+        return Response({"status": "Payment not completed"}, status=400)
+
+    except Exception as e:
+        logger.exception("Error confirming checkout: %s", e)
+        return Response({"error": "Failed to confirm checkout"}, status=500)
+
+
+# --- Stripe Webhook (Fallback for Production) ---
 @csrf_exempt
 @require_POST
 def stripe_webhook(request):
     payload = request.body
     sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
-    endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
+    endpoint_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", None)
 
     try:
-        if sig_header:
+        if sig_header and endpoint_secret:
+            # validate signature
             event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
         else:
-            event = json.loads(payload)
+            # fallback for local testing when no signature header is present
+            try:
+                event = json.loads(payload.decode("utf-8"))
+            except Exception:
+                event = json.loads(payload)
     except Exception as e:
         logger.exception("Invalid Stripe webhook: %s", e)
         return HttpResponse(status=400)
 
-    if event["type"] == "checkout.session.completed":
+    # Now handle the event
+    event_type = event.get("type")
+    if event_type == "checkout.session.completed":
         session = event["data"]["object"]
         payroll_id = session.get("metadata", {}).get("payroll_id")
         if payroll_id:
             try:
                 payroll = Payroll.objects.get(id=payroll_id)
+                # process even if already PAID but payslip missing
+                needs_processing = payroll.payment_status != "PAID" or not hasattr(payroll, "payslip")
                 if payroll.payment_status != "PAID":
                     payroll.payment_status = "PAID"
                     payroll.paid_on = timezone.now().date()
                     payroll.save()
 
-                    pdf_buffer = generate_payslip_pdf(payroll)
-                    Payslip.objects.update_or_create(payroll=payroll)
+                if needs_processing:
+                    pdf_buffer, pdf_url = generate_payslip_pdf(payroll)
+                    Payslip.objects.update_or_create(
+                        payroll=payroll,
+                        defaults={"payslip_pdf_url": pdf_url}
+                    )
                     send_payslip_email(payroll, pdf_buffer)
-
                     Notification.objects.create(
                         employee=payroll.employee,
                         message=f"Payroll {payroll_id} has been marked as PAID. Payslip emailed."
                     )
-
-                    logger.info("Payroll %s marked PAID and detailed payslip emailed", payroll.id)
+                    logger.info("Payroll %s processed: PAID + payslip/email", payroll.id)
 
             except Payroll.DoesNotExist:
                 logger.error("Payroll %s not found", payroll_id)
+
+    elif event_type == "payment_intent.payment_failed":
+        payment_intent = event.get("data", {}).get("object", {})
+        logger.warning("Payment failed: %s", payment_intent.get("id"))
 
     return HttpResponse(status=200)
