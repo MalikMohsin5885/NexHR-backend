@@ -223,15 +223,10 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:8080",
     "https://your-frontend-domain.com",
-<<<<<<< Updated upstream
-    "https://lovable.dev",
-    "https://08bd1539f41b.ngrok-free.app",
-=======
      "https://lovable.dev", # production
      "https://08bd1539f41b.ngrok-free.app",
      
      "https://preview--salaryscape-hub.lovable.app"
->>>>>>> Stashed changes
 ]
 
 
