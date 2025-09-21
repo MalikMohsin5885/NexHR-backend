@@ -1,11 +1,13 @@
 from decimal import Decimal
 from io import BytesIO
-import os
+from datetime import datetime
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core.mail import EmailMessage
 from django.conf import settings
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-
+import os
 from .models import TaxBracket, StatutoryDeduction
 
 
@@ -61,7 +63,8 @@ def generate_payslip_pdf(payroll):
     p.drawString(120, y, f"Gross Salary: {payroll.gross_salary}"); y -= 20
     p.drawString(120, y, f"Tax Deducted: {payroll.tax_amount}"); y -= 20
     p.drawString(120, y, f"Statutory Deductions: {payroll.statutory_deductions}"); y -= 20
-    p.drawString(120, y, f"Other Deductions: {getattr(payroll.salary_structure, 'deductions', 0)}"); y -= 20
+    other_deductions = payroll.salary_structure.deductions if payroll.salary_structure else 0
+    p.drawString(120, y, f"Other Deductions: {other_deductions}"); y -= 20
     p.drawString(120, y, f"Total Deductions: {payroll.total_deductions}"); y -= 20
 
     p.setFont("Helvetica-Bold", 12)
@@ -93,7 +96,7 @@ def generate_payslip_pdf(payroll):
 def send_payslip_email(payroll, pdf_buffer):
     subject = "Your Payslip is Ready"
     body = (
-        f"Dear {getattr(payroll.employee, 'get_full_name', lambda: payroll.employee.username)() or payroll.employee.username},\n\n"
+        f"Dear {payroll.employee.fname} {payroll.employee.lname or ''},\n\n"
         f"Your salary has been processed successfully.\n"
         f"Period: {payroll.period_start} to {payroll.period_end}\n"
         f"Gross: {payroll.gross_salary}\n"
@@ -112,3 +115,18 @@ def send_payslip_email(payroll, pdf_buffer):
     # Attach the in-memory PDF
     email.attach(f"payslip_{payroll.id}.pdf", pdf_buffer.getvalue(), "application/pdf")
     email.send()
+
+
+def save_payslip_to_storage(payroll, pdf_buffer):
+    """
+    Persist the PDF buffer to MEDIA storage and return a URL.
+    Creates directories as needed via default_storage.
+    """
+    filename = f"payslips/payslip_{payroll.id}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    file_obj = ContentFile(pdf_buffer.getvalue())
+    saved_path = default_storage.save(filename, file_obj)
+
+    if hasattr(default_storage, "url"):
+        return default_storage.url(saved_path)
+    # Fallback for local file storage
+    return f"{settings.MEDIA_URL}{saved_path}"

@@ -156,7 +156,9 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.views import TokenObtainPairView
+from django.contrib.auth import login
 
 from .serializers import RegisterSerializer, CustomTokenObtainPairSerializer, UserListSerializer, PasswordResetRequestSerializer, CompanySerializer, UserProfileSerializer
 
@@ -245,6 +247,9 @@ class GoogleLogin(SocialLoginView):
 
 
 class VerifyEmailView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
     def get(self, request, uidb64, token):
         try:
             uid = force_str(urlsafe_base64_decode(uidb64))
@@ -283,6 +288,22 @@ class RegisterView(generics.CreateAPIView):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def session_login(request):
+    email = request.data.get('email')
+    password = request.data.get('password')
+    
+    try:
+        user = User.objects.get(email=email)
+        if user.check_password(password):
+            login(request, user)
+            return Response({'message': 'Login successful'}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]

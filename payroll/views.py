@@ -10,8 +10,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from rest_framework import viewsets
-from rest_framework.decorators import api_view, action
+from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 
 from .models import (
     SalaryStructure, Payroll, Payslip,
@@ -27,6 +28,7 @@ from .utils import (
     calc_attendance_leave_deductions,
     generate_payslip_pdf,
     send_payslip_email,
+    save_payslip_to_storage,
     calculate_tax,
     calculate_statutory_deductions,
 )
@@ -43,30 +45,30 @@ def csrf_exempt_class(view):
 
 
 # --- Salary Structures ---
-@csrf_exempt_class
 class SalaryStructureViewSet(viewsets.ModelViewSet):
     queryset = SalaryStructure.objects.all()
     serializer_class = SalaryStructureSerializer
+    permission_classes = [IsAuthenticated]
 
 
 # --- Tax & Statutory ---
-@csrf_exempt_class
 class TaxBracketViewSet(viewsets.ModelViewSet):
     queryset = TaxBracket.objects.all()
     serializer_class = TaxBracketSerializer
+    permission_classes = [IsAuthenticated]
 
 
-@csrf_exempt_class
 class StatutoryDeductionViewSet(viewsets.ModelViewSet):
     queryset = StatutoryDeduction.objects.all()
     serializer_class = StatutoryDeductionSerializer
+    permission_classes = [IsAuthenticated]
 
 
 # --- Payrolls ---
-@csrf_exempt_class
 class PayrollViewSet(viewsets.ModelViewSet):
     queryset = Payroll.objects.all()
     serializer_class = PayrollSerializer
+    permission_classes = [IsAuthenticated]
 
     @action(detail=True, methods=["post"], url_path="calculate")
     def calculate(self, request, pk=None):
@@ -92,12 +94,28 @@ class PayrollViewSet(viewsets.ModelViewSet):
 
         return Response(PayrollSerializer(payroll).data)
 
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request, pk=None):
+        payroll = self.get_object()
+        payroll.approval_status = "APPROVED"
+        payroll.approved_by = request.user
+        payroll.save(update_fields=["approval_status", "approved_by"])
+        return Response(PayrollSerializer(payroll).data)
+
+    @action(detail=True, methods=["post"], url_path="reject")
+    def reject(self, request, pk=None):
+        payroll = self.get_object()
+        payroll.approval_status = "REJECTED"
+        payroll.approved_by = request.user
+        payroll.save(update_fields=["approval_status", "approved_by"])
+        return Response(PayrollSerializer(payroll).data)
+
     # --- NEW: Download Payslip PDF ---
     @action(detail=True, methods=["get"], url_path="download-payslip")
     def download_payslip(self, request, pk=None):
         try:
             payroll = self.get_object()
-            pdf_buffer, _ = generate_payslip_pdf(payroll)
+            pdf_buffer = generate_payslip_pdf(payroll)
             filename = f"payslip_{payroll.id}.pdf"
             return FileResponse(
                 pdf_buffer,
@@ -111,36 +129,36 @@ class PayrollViewSet(viewsets.ModelViewSet):
 
 
 # --- Payslips ---
-@csrf_exempt_class
 class PayslipViewSet(viewsets.ModelViewSet):
     queryset = Payslip.objects.all()
     serializer_class = PayslipSerializer
+    permission_classes = [IsAuthenticated]
 
 
 # --- Attendance ---
-@csrf_exempt_class
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = EmployeeAttendance.objects.all()
     serializer_class = EmployeeAttendanceSerializer
+    permission_classes = [IsAuthenticated]
 
 
 # --- Leaves ---
-@csrf_exempt_class
 class LeaveRecordViewSet(viewsets.ModelViewSet):
     queryset = LeaveRecord.objects.all()
     serializer_class = LeaveRecordSerializer
+    permission_classes = [IsAuthenticated]
 
 
 # --- Notifications ---
-@csrf_exempt_class
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
 
 
 # --- Stripe Checkout Session ---
-@csrf_exempt
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def create_checkout_session(request, payroll_id):
     try:
         payroll = Payroll.objects.get(id=payroll_id)
@@ -162,112 +180,68 @@ def create_checkout_session(request, payroll_id):
             "quantity": 1,
         }],
         mode="payment",
-        success_url=f"{settings.SITE_URL}/success?session_id={{CHECKOUT_SESSION_ID}}",
+        success_url=f"{settings.SITE_URL}/success",
         cancel_url=f"{settings.SITE_URL}/cancel",
-        metadata={"payroll_id": str(payroll.id)},
+        metadata={
+            "payroll_id": str(payroll.id),
+            "paid_by": str(request.user.id) if request.user and request.user.is_authenticated else "",
+        },
     )
     return Response({"id": session.id, "url": session.url})
 
 
-# --- Hybrid: Confirm Checkout (Immediate Payslip) ---
-@csrf_exempt
-@api_view(["POST"])
-def confirm_checkout(request):
-    """
-    Called from frontend after redirect to success_url.
-    Verifies payment with Stripe API, then generates payslip instantly.
-    """
-    session_id = request.data.get("session_id")
-    if not session_id:
-        return Response({"error": "Missing session_id"}, status=400)
-
-    try:
-        session = stripe.checkout.Session.retrieve(session_id)
-        payroll_id = session.metadata.get("payroll_id")
-
-        if session.payment_status == "paid" and payroll_id:
-            payroll = Payroll.objects.get(id=payroll_id)
-            if payroll.payment_status != "PAID":
-                payroll.payment_status = "PAID"
-                payroll.paid_on = timezone.now().date()
-                payroll.save()
-
-                pdf_buffer, pdf_url = generate_payslip_pdf(payroll)
-                Payslip.objects.update_or_create(
-                    payroll=payroll,
-                    defaults={"payslip_pdf_url": pdf_url}
-                )
-                send_payslip_email(payroll, pdf_buffer)
-
-                Notification.objects.create(
-                    employee=payroll.employee,
-                    message=f"Payroll {payroll_id} has been marked as PAID. Payslip emailed."
-                )
-
-            return Response({"status": "Payslip generated and emailed"})
-
-        return Response({"status": "Payment not completed"}, status=400)
-
-    except Exception as e:
-        logger.exception("Error confirming checkout: %s", e)
-        return Response({"error": "Failed to confirm checkout"}, status=500)
-
-
-# --- Stripe Webhook (Fallback for Production) ---
+# --- Stripe Webhook ---
 @csrf_exempt
 @require_POST
 def stripe_webhook(request):
     payload = request.body
     sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
-    endpoint_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", None)
+    endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
 
     try:
-        if sig_header and endpoint_secret:
-            # validate signature
+        if sig_header:
             event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
         else:
-            # fallback for local testing when no signature header is present
-            try:
-                event = json.loads(payload.decode("utf-8"))
-            except Exception:
-                event = json.loads(payload)
+            event = json.loads(payload)
     except Exception as e:
         logger.exception("Invalid Stripe webhook: %s", e)
         return HttpResponse(status=400)
 
-    # Now handle the event
-    event_type = event.get("type")
-    if event_type == "checkout.session.completed":
+    if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         payroll_id = session.get("metadata", {}).get("payroll_id")
         if payroll_id:
             try:
                 payroll = Payroll.objects.get(id=payroll_id)
-                # process even if already PAID but payslip missing
-                needs_processing = payroll.payment_status != "PAID" or not hasattr(payroll, "payslip")
                 if payroll.payment_status != "PAID":
                     payroll.payment_status = "PAID"
                     payroll.paid_on = timezone.now().date()
+                    paid_by = session.get("metadata", {}).get("paid_by")
+                    if paid_by:
+                        try:
+                            from django.contrib.auth import get_user_model
+                            User = get_user_model()
+                            payroll.paid_by = User.objects.filter(id=paid_by).first()
+                        except Exception:
+                            payroll.paid_by = None
                     payroll.save()
 
-                if needs_processing:
-                    pdf_buffer, pdf_url = generate_payslip_pdf(payroll)
+                    pdf_buffer = generate_payslip_pdf(payroll)
+                    pdf_url = save_payslip_to_storage(payroll, pdf_buffer)
                     Payslip.objects.update_or_create(
                         payroll=payroll,
                         defaults={"payslip_pdf_url": pdf_url}
                     )
                     send_payslip_email(payroll, pdf_buffer)
+
                     Notification.objects.create(
                         employee=payroll.employee,
                         message=f"Payroll {payroll_id} has been marked as PAID. Payslip emailed."
                     )
-                    logger.info("Payroll %s processed: PAID + payslip/email", payroll.id)
+
+                    logger.info("Payroll %s marked PAID and detailed payslip emailed", payroll.id)
 
             except Payroll.DoesNotExist:
                 logger.error("Payroll %s not found", payroll_id)
-
-    elif event_type == "payment_intent.payment_failed":
-        payment_intent = event.get("data", {}).get("object", {})
-        logger.warning("Payment failed: %s", payment_intent.get("id"))
 
     return HttpResponse(status=200)

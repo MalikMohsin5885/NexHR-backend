@@ -31,6 +31,7 @@ class DashboardView(APIView):
     
 
 class UserDetailWithRolesPermissions(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request, pk):
         try:
             user = User.objects.get(pk=pk)

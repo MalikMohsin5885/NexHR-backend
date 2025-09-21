@@ -55,6 +55,26 @@ class Payroll(models.Model):
         default="PENDING",
     )
     paid_on = models.DateField(null=True, blank=True)
+    # Who paid and approvals
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="payrolls_paid",
+    )
+    approval_status = models.CharField(
+        max_length=20,
+        choices=[("AWAITING", "Awaiting"), ("APPROVED", "Approved"), ("REJECTED", "Rejected")],
+        default="AWAITING",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="payrolls_approved",
+    )
 
     def __str__(self):
         return f"Payroll for {self.employee.email} ({self.period_start} - {self.period_end})"
@@ -62,6 +82,7 @@ class Payroll(models.Model):
 
 class Payslip(models.Model):
     payroll = models.OneToOneField(Payroll, on_delete=models.CASCADE, related_name="payslip")
+    payslip_pdf_url = models.URLField(null=True, blank=True)
     issued_on = models.DateField(auto_now_add=True)
 
     def __str__(self):

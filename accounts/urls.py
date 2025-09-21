@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import RegisterView, CustomTokenObtainPairView, VerifyEmailView, UserView, PasswordResetRequestView, PasswordResetConfirmView, CompanyCreateView, AuthenticatedUserView, LinkedInAuthRedirectView, LinkedInCallbackView, LinkedInStatusView, LinkedInTokenView
+from .views import RegisterView, CustomTokenObtainPairView, VerifyEmailView, UserView, PasswordResetRequestView, PasswordResetConfirmView, CompanyCreateView, AuthenticatedUserView, LinkedInAuthRedirectView, LinkedInCallbackView, LinkedInStatusView, LinkedInTokenView, session_login
 
 
 from django.urls import path
@@ -13,6 +13,7 @@ urlpatterns = [
     
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("session-login/", session_login, name="session_login"),
     path("refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("verify-email/<uidb64>/<token>/", VerifyEmailView.as_view(), name="verify-email"),
     path("profile/", AuthenticatedUserView.as_view(), name='authenticated-user'),

@@ -16,6 +16,7 @@ class PayrollSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payroll
         fields = "__all__"
+        read_only_fields = ("paid_on", "paid_by", "approval_status", "approved_by", "tax_amount", "statutory_deductions")
 
 
 class PayslipSerializer(serializers.ModelSerializer):
