@@ -1,88 +1,99 @@
-from decimal import Decimal
-import stripe
 import logging
-import json
-from datetime import datetime
+from decimal import Decimal
+from pathlib import Path
+
+import stripe
 from django.conf import settings
 from django.utils import timezone
-from django.http import HttpResponse, FileResponse
+from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from rest_framework import viewsets
-from rest_framework.decorators import api_view, action, permission_classes
+from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 
 from .models import (
-    SalaryStructure, Payroll, Payslip,
-    EmployeeAttendance, LeaveRecord, Notification,
-    TaxBracket, StatutoryDeduction
+    SalaryStructure, Payroll, Payslip, EmployeeAttendance, LeaveRecord, Notification,
+    EmployeeBankInfo, Loan, Expense, BulkPaymentLog
 )
 from .serializers import (
     SalaryStructureSerializer, PayrollSerializer, PayslipSerializer,
     EmployeeAttendanceSerializer, LeaveRecordSerializer, NotificationSerializer,
-    TaxBracketSerializer, StatutoryDeductionSerializer
+    EmployeeBankInfoSerializer, LoanSerializer, ExpenseSerializer, BulkPaymentLogSerializer
 )
 from .utils import (
-    calc_attendance_leave_deductions,
-    generate_payslip_pdf,
-    send_payslip_email,
-    save_payslip_to_storage,
-    calculate_tax,
-    calculate_statutory_deductions,
+    calc_attendance_leave_deductions, calculate_tax, calculate_statutory_deductions,
+    generate_payslip_pdf, send_payslip_email,
+    process_bulk_payment, apply_loan_deductions
 )
+from .permissions import IsAdmin, IsFinance, IsHR, IsEmployeeSelf
 
 logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
+# ---------------- CSRF EXEMPT HELPER ----------------
 def csrf_exempt_class(view):
+    """Exempt CSRF for all ViewSet actions."""
     from django.utils.decorators import method_decorator
     decorator = method_decorator(csrf_exempt)
     view.dispatch = decorator(view.dispatch)
     return view
 
 
-# --- Salary Structures ---
+# ---------------- Salary Structure ----------------
+@csrf_exempt_class
 class SalaryStructureViewSet(viewsets.ModelViewSet):
     queryset = SalaryStructure.objects.all()
     serializer_class = SalaryStructureSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsFinance | IsAdmin]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.roles.filter(name__in=["ADMIN", "FINANCE"]).exists():
+            return SalaryStructure.objects.all()
+        return SalaryStructure.objects.none()
 
 
-# --- Tax & Statutory ---
-class TaxBracketViewSet(viewsets.ModelViewSet):
-    queryset = TaxBracket.objects.all()
-    serializer_class = TaxBracketSerializer
-    permission_classes = [IsAuthenticated]
-
-
-class StatutoryDeductionViewSet(viewsets.ModelViewSet):
-    queryset = StatutoryDeduction.objects.all()
-    serializer_class = StatutoryDeductionSerializer
-    permission_classes = [IsAuthenticated]
-
-
-# --- Payrolls ---
+# ---------------- Payroll ----------------
+@csrf_exempt_class
 class PayrollViewSet(viewsets.ModelViewSet):
     queryset = Payroll.objects.all()
     serializer_class = PayrollSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsFinance | IsAdmin | IsHR | IsEmployeeSelf]
 
-    @action(detail=True, methods=["post"], url_path="calculate")
+    def get_queryset(self):
+        user = self.request.user
+        if user.roles.filter(name__in=["ADMIN", "FINANCE", "HR"]).exists():
+            return Payroll.objects.all()
+        return Payroll.objects.filter(employee=user)
+
+    def perform_create(self, serializer):
+        if not self.request.user.roles.filter(name__in=["ADMIN", "FINANCE"]).exists():
+            raise PermissionDenied("Only Finance/Admin can create payroll records.")
+        serializer.save()
+
+    @action(detail=True, methods=["post"], url_path="calculate", permission_classes=[IsFinance | IsAdmin])
     def calculate(self, request, pk=None):
         payroll = self.get_object()
         s = payroll.salary_structure
         if not s:
             return Response({"detail": "No SalaryStructure linked"}, status=400)
 
+        dynamic_deduction = calc_attendance_leave_deductions(payroll)
         gross = (s.basic_pay + s.allowances).quantize(Decimal("0.01"))
+
+        # Apply tax & statutory deductions
         tax_amount = calculate_tax(gross)
         statutory = calculate_statutory_deductions(gross)
-        dynamic_deduction = calc_attendance_leave_deductions(payroll)
 
-        total_deductions = (s.deductions + dynamic_deduction + tax_amount + statutory).quantize(Decimal("0.01"))
+        # Apply loan deductions
+        loan_deduction = apply_loan_deductions(payroll.employee, gross)
+
+        total_deductions = (s.deductions + dynamic_deduction + tax_amount + statutory + loan_deduction).quantize(Decimal("0.01"))
         net = (gross - total_deductions).quantize(Decimal("0.01"))
 
         payroll.gross_salary = gross
@@ -94,71 +105,136 @@ class PayrollViewSet(viewsets.ModelViewSet):
 
         return Response(PayrollSerializer(payroll).data)
 
-    @action(detail=True, methods=["post"], url_path="approve")
-    def approve(self, request, pk=None):
-        payroll = self.get_object()
-        payroll.approval_status = "APPROVED"
-        payroll.approved_by = request.user
-        payroll.save(update_fields=["approval_status", "approved_by"])
-        return Response(PayrollSerializer(payroll).data)
 
-    @action(detail=True, methods=["post"], url_path="reject")
-    def reject(self, request, pk=None):
-        payroll = self.get_object()
-        payroll.approval_status = "REJECTED"
-        payroll.approved_by = request.user
-        payroll.save(update_fields=["approval_status", "approved_by"])
-        return Response(PayrollSerializer(payroll).data)
-
-    # --- NEW: Download Payslip PDF ---
-    @action(detail=True, methods=["get"], url_path="download-payslip")
-    def download_payslip(self, request, pk=None):
-        try:
-            payroll = self.get_object()
-            pdf_buffer = generate_payslip_pdf(payroll)
-            filename = f"payslip_{payroll.id}.pdf"
-            return FileResponse(
-                pdf_buffer,
-                as_attachment=True,
-                filename=filename,
-                content_type="application/pdf",
-            )
-        except Exception as e:
-            logger.exception("Error generating payslip: %s", e)
-            return Response({"error": "Could not generate payslip"}, status=500)
-
-
-# --- Payslips ---
+# ---------------- Payslip ----------------
+@csrf_exempt_class
 class PayslipViewSet(viewsets.ModelViewSet):
     queryset = Payslip.objects.all()
     serializer_class = PayslipSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsEmployeeSelf | IsFinance | IsAdmin]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.roles.filter(name__in=["ADMIN", "FINANCE", "HR"]).exists():
+            return Payslip.objects.all()
+        return Payslip.objects.filter(payroll__employee=user)
 
 
-# --- Attendance ---
+# ---------------- Attendance ----------------
+@csrf_exempt_class
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = EmployeeAttendance.objects.all()
     serializer_class = EmployeeAttendanceSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsHR | IsAdmin | IsEmployeeSelf]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.roles.filter(name__in=["ADMIN", "HR"]).exists():
+            return EmployeeAttendance.objects.all()
+        return EmployeeAttendance.objects.filter(employee=user)
 
 
-# --- Leaves ---
+# ---------------- Leave ----------------
+@csrf_exempt_class
 class LeaveRecordViewSet(viewsets.ModelViewSet):
     queryset = LeaveRecord.objects.all()
     serializer_class = LeaveRecordSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsHR | IsAdmin | IsEmployeeSelf]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.roles.filter(name__in=["ADMIN", "HR"]).exists():
+            return LeaveRecord.objects.all()
+        return LeaveRecord.objects.filter(employee=user)
 
 
-# --- Notifications ---
+# ---------------- Notification ----------------
+@csrf_exempt_class
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsEmployeeSelf | IsHR | IsAdmin]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.roles.filter(name__in=["ADMIN", "HR"]).exists():
+            return Notification.objects.all()
+        return Notification.objects.filter(employee=user)
 
 
-# --- Stripe Checkout Session ---
+# ---------------- Employee Bank Info ----------------
+@csrf_exempt_class
+class EmployeeBankInfoViewSet(viewsets.ModelViewSet):
+    queryset = EmployeeBankInfo.objects.all()
+    serializer_class = EmployeeBankInfoSerializer
+    permission_classes = [IsAuthenticated, IsFinance | IsAdmin | IsEmployeeSelf]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.roles.filter(name__in=["ADMIN", "FINANCE"]).exists():
+            return EmployeeBankInfo.objects.all()
+        return EmployeeBankInfo.objects.filter(employee=user)
+
+
+# ---------------- Loan ----------------
+@csrf_exempt_class
+class LoanViewSet(viewsets.ModelViewSet):
+    queryset = Loan.objects.all()
+    serializer_class = LoanSerializer
+    permission_classes = [IsAuthenticated, IsFinance | IsAdmin | IsEmployeeSelf]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.roles.filter(name__in=["ADMIN", "FINANCE"]).exists():
+            return Loan.objects.all()
+        return Loan.objects.filter(employee=user)
+
+    @action(detail=True, methods=["post"], url_path="approve", permission_classes=[IsFinance | IsAdmin])
+    def approve(self, request, pk=None):
+        loan = self.get_object()
+        loan.status = "APPROVED"
+        loan.approved_on = timezone.now().date()
+        loan.save()
+        return Response({"detail": "Loan approved."})
+
+
+# ---------------- Expense ----------------
+@csrf_exempt_class
+class ExpenseViewSet(viewsets.ModelViewSet):
+    queryset = Expense.objects.all()
+    serializer_class = ExpenseSerializer
+    permission_classes = [IsAuthenticated, IsFinance | IsAdmin | IsEmployeeSelf]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.roles.filter(name__in=["ADMIN", "FINANCE"]).exists():
+            return Expense.objects.all()
+        return Expense.objects.filter(employee=user)
+
+    @action(detail=True, methods=["post"], url_path="approve", permission_classes=[IsFinance | IsAdmin])
+    def approve(self, request, pk=None):
+        expense = self.get_object()
+        expense.status = "APPROVED"
+        expense.reviewed_on = timezone.now().date()
+        expense.save()
+        return Response({"detail": "Expense approved."})
+
+
+# ---------------- Bulk Payments ----------------
+@csrf_exempt_class
+class BulkPaymentViewSet(viewsets.ModelViewSet):
+    queryset = BulkPaymentLog.objects.all()
+    serializer_class = BulkPaymentLogSerializer
+    permission_classes = [IsAuthenticated, IsFinance | IsAdmin]
+
+    def perform_create(self, serializer):
+        bulk_payment = serializer.save(created_by=self.request.user)
+        process_bulk_payment(bulk_payment)
+
+
+# ---------------- Stripe Integration ----------------
+@csrf_exempt
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
 def create_checkout_session(request, payroll_id):
     try:
         payroll = Payroll.objects.get(id=payroll_id)
@@ -182,15 +258,11 @@ def create_checkout_session(request, payroll_id):
         mode="payment",
         success_url=f"{settings.SITE_URL}/success",
         cancel_url=f"{settings.SITE_URL}/cancel",
-        metadata={
-            "payroll_id": str(payroll.id),
-            "paid_by": str(request.user.id) if request.user and request.user.is_authenticated else "",
-        },
+        metadata={"payroll_id": str(payroll.id)},
     )
     return Response({"id": session.id, "url": session.url})
 
 
-# --- Stripe Webhook ---
 @csrf_exempt
 @require_POST
 def stripe_webhook(request):
@@ -199,10 +271,7 @@ def stripe_webhook(request):
     endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
 
     try:
-        if sig_header:
-            event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
-        else:
-            event = json.loads(payload)
+        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except Exception as e:
         logger.exception("Invalid Stripe webhook: %s", e)
         return HttpResponse(status=400)
@@ -216,30 +285,22 @@ def stripe_webhook(request):
                 if payroll.payment_status != "PAID":
                     payroll.payment_status = "PAID"
                     payroll.paid_on = timezone.now().date()
-                    paid_by = session.get("metadata", {}).get("paid_by")
-                    if paid_by:
-                        try:
-                            from django.contrib.auth import get_user_model
-                            User = get_user_model()
-                            payroll.paid_by = User.objects.filter(id=paid_by).first()
-                        except Exception:
-                            payroll.paid_by = None
                     payroll.save()
 
-                    pdf_buffer = generate_payslip_pdf(payroll)
-                    pdf_url = save_payslip_to_storage(payroll, pdf_buffer)
+                    # Generate payslip PDF
+                    pdf_url = generate_payslip_pdf(payroll)
+                    pdf_path = str(Path(settings.MEDIA_ROOT) / pdf_url.replace(settings.MEDIA_URL, ""))
+
                     Payslip.objects.update_or_create(
                         payroll=payroll,
                         defaults={"payslip_pdf_url": pdf_url}
                     )
-                    send_payslip_email(payroll, pdf_buffer)
 
+                    send_payslip_email(payroll, pdf_path)
                     Notification.objects.create(
                         employee=payroll.employee,
-                        message=f"Payroll {payroll_id} has been marked as PAID. Payslip emailed."
+                        message=f"Payroll {payroll_id} has been marked as PAID."
                     )
-
-                    logger.info("Payroll %s marked PAID and detailed payslip emailed", payroll.id)
 
             except Payroll.DoesNotExist:
                 logger.error("Payroll %s not found", payroll_id)
