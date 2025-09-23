@@ -25,22 +25,25 @@ RUN pip install --no-cache-dir --upgrade pip
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install gunicorn and gevent for production server
-RUN pip install gunicorn==21.2.0 gevent==23.9.1
+# Install gunicorn for production server (removed gevent as it was causing issues)
+RUN pip install gunicorn==21.2.0
 
-# Create non-root user for security
+# Copy project files first
+COPY . .
+
+# Create non-root user for security but give proper permissions
 RUN useradd --create-home --shell /bin/bash app \
-    && chown -R app:app /app
+    && chown -R app:app /app \
+    && chmod -R 755 /app
+
+# Create directories that might be needed
+RUN mkdir -p /app/staticfiles /app/media \
+    && chown -R app:app /app/staticfiles /app/media
+
+# Switch to non-root user
 USER app
 
-# Copy project files
-COPY --chown=app:app . .
-
-# Collect static files (if needed)
-RUN python manage.py collectstatic --noinput --clear || true
-
-# Create entrypoint script
-COPY --chown=app:app docker-entrypoint.sh /app/docker-entrypoint.sh
+# Make entrypoint script executable
 RUN chmod +x /app/docker-entrypoint.sh
 
 # Expose port for Cloud Run
