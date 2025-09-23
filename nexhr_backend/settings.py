@@ -376,3 +376,21 @@ LOGGING = {
         },
     },
 }
+
+
+load_dotenv(BASE_DIR / ".env")
+
+print("=== Django Settings Debug ===")
+print(f"DEBUG={os.getenv('DEBUG')}")
+print(f"SECRET_KEY={'SET' if os.getenv('SECRET_KEY') else 'NOT SET'}")
+print(f"ALLOWED_HOSTS_STR={os.getenv('ALLOWED_HOSTS')}")
+print(f"DATABASE_URL={os.getenv('DATABASE_URL')}")
+print(f"POSTGRES_DB={os.getenv('POSTGRES_DB')}")
+print(f"POSTGRES_USER={os.getenv('POSTGRES_USER')}")
+print(f"POSTGRES_HOST={os.getenv('POSTGRES_HOST')}")
+print(f"GOOGLE_CLOUD_PROJECT={os.getenv('GOOGLE_CLOUD_PROJECT')}")
+print(f"GOOGLE_OAUTH_CLIENT_ID={'SET' if os.getenv('GOOGLE_OAUTH_CLIENT_ID') else 'NOT SET'}")
+print(f"LINKEDIN_CLIENT_ID={'SET' if os.getenv('LINKEDIN_CLIENT_ID') else 'NOT SET'}")
+print(f"CELERY_BROKER_URL={os.getenv('CELERY_BROKER_URL')}")
+print(f"REDIS_URL={os.getenv('REDIS_URL')}")
+print("=== End Debug ===\n")
