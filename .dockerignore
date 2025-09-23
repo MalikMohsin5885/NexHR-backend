@@ -1,10 +1,18 @@
+# Python cache and compiled files
 venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py[cod]
+*$py.class
+*.so
+
+# Database files
 *.db
 *.sqlite3
+
+# Logs and temporary files
 *.log
 *.csv
 *.tsv
@@ -31,7 +39,47 @@ __pycache__/
 *.bmp
 *.tiff
 *.ico
+
+# Node modules (if any)
 node_modules/
+
+# Git and Docker files
 .git/
+.gitignore
 .dockerignore
-Dockerfile
+Dockerfile*
+docker-compose*
+
+# Environment and configuration
+.env
+.env.*
+.vscode/
+.idea/
+
+# Build artifacts and static files
+staticfiles/
+static/
+media/
+
+# Celery files
+celerybeat-schedule
+celerybeat.pid
+
+# Test and coverage
+.coverage
+.pytest_cache/
+.tox/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Documentation
+README*
+*.md
+docs/
