@@ -13,8 +13,15 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os
-import dj_database_url
 from dotenv import load_dotenv
+
+# Try to import dj_database_url, fallback if not available
+try:
+    import dj_database_url
+    HAS_DATABASE_URL = True
+except ImportError:
+    HAS_DATABASE_URL = False
+    print("Warning: dj_database_url not available, using fallback database configuration")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -112,15 +119,27 @@ WSGI_APPLICATION = 'nexhr_backend.wsgi.application'
 # Primary database configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL:
+if DATABASE_URL and HAS_DATABASE_URL:
     # Parse DATABASE_URL for production (Cloud SQL, etc.)
     DATABASES = {
         'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
     }
 else:
-    # Fallback to individual environment variables for local development
+    # Fallback to individual environment variables or SQLite for testing
+    if DATABASE_URL and not HAS_DATABASE_URL:
+        print("Warning: DATABASE_URL provided but dj_database_url not available")
+    
+    # Use SQLite as fallback for Cloud Run testing
     DATABASES = {
         'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
+    }
+    
+    # Override with PostgreSQL if individual env vars are provided
+    if os.getenv('POSTGRES_DB') or os.getenv('DB_NAME'):
+        DATABASES['default'] = {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.getenv('POSTGRES_DB', os.getenv('DB_NAME', 'nexhr_db')),
             'USER': os.getenv('POSTGRES_USER', os.getenv('DB_USER', 'nexhr_user')),
@@ -129,7 +148,6 @@ else:
             'PORT': os.getenv('POSTGRES_PORT', os.getenv('DB_PORT', '5432')),
             'CONN_MAX_AGE': 600,
         }
-    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
