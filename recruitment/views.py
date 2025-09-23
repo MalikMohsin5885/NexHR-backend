@@ -3,10 +3,10 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics, permissions
-from .serializers import JobDetailsSerializer, JobListSerializer, JobApplicationSerializer
+from .serializers import JobDetailsSerializer, JobListSerializer, JobApplicationSerializer, RequiredSkillSerializer
 from accounts.serializers import CSVUserSerializer
 from accounts.models import User, CompanyLinkedInAuth, Department
-from .models import JobDetails, JobApplication
+from .models import JobDetails, JobApplication, RequiredSkill, CandidateSkill, CandidateExperience, CandidateEducation
 from .pagination import CustomPageNumberPagination
 from rest_framework.parsers import MultiPartParser
 from io import TextIOWrapper
@@ -24,6 +24,19 @@ import json
 
 # Create your views here.
 
+# -------------------- Skills List/Search API --------------------
+class RequiredSkillListView(generics.ListAPIView):
+    serializer_class = RequiredSkillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = RequiredSkill.objects.all().order_by("name")
+        search = self.request.query_params.get("q")
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+        return queryset[:10]
+
+
 class CreateJobPostView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -38,11 +51,8 @@ class CreateJobPostView(APIView):
             requirements = data.pop('job_requirements', None)
             department_name = data.pop('department')
             job_deadline = data.pop('job_deadline')   # ✅ from payload
+            skill_names = data.pop('required_skills', [])
             print("Job Deadline-=-=-=-:", job_deadline)
-
-            user = request.user
-            company = getattr(user, 'company', None)
-            branch = getattr(user, 'branch', None)
 
             user = request.user
             company = getattr(user, 'company', None)
@@ -68,6 +78,17 @@ class CreateJobPostView(APIView):
                 status='active',
                 job_deadline=job_deadline, 
             )
+            
+            # Handle required skills (create if missing)
+            skills_to_add = []
+            for name in skill_names:
+                if name:  # avoid None
+                    skill, _ = RequiredSkill.objects.get_or_create(name=name)
+                    skills_to_add.append(skill)
+            if skills_to_add:
+                job.required_skills.add(*skills_to_add)
+                
+            
             print("Job Deadline:", job.job_deadline)
             # If you want to store requirements, add a field in model OR keep it in job_schema
             if requirements:
@@ -233,40 +254,53 @@ class EmployeeCSVImportView(APIView):
             "created": created_users,
             "updated": updated_users
         }, status=201)
-
-
-
+        
 class JobApplicationView(APIView):
     def post(self, request, *args, **kwargs):
-        data = request.data.copy()
+        print("========== RAW REQUEST DATA ==========")
+        print("request.data:", request.data)
+        print("request.FILES:", request.FILES)
 
-        # Parse nested fields if sent as JSON strings
-        for field in ["skills", "experiences", "educations"]:
-            if field in data and isinstance(data[field], str):
+        # Convert QueryDict -> normal dict with lists unwrapped
+        data = {}
+        for key, value in request.data.items():
+            if key in ["skills", "experiences", "educations"]:
                 try:
-                    data[field] = json.loads(data[field])
-                except Exception:
-                    data[field] = []
+                    parsed = json.loads(value)
+                    if isinstance(parsed, list):
+                        data[key] = parsed   # ✅ store clean list
+                    else:
+                        data[key] = []
+                except Exception as e:
+                    print(f"[ERROR] Failed parsing {key}: {e}")
+                    data[key] = []
+            else:
+                data[key] = value
 
         resume_file = request.FILES.get("resume")
         if resume_file:
+            print("[DEBUG] Resume file received:", resume_file.name)
             resume_text = extract_text_from_file(resume_file)
             data["resume_text"] = resume_text
         else:
             data["resume_text"] = ""
 
+        print("========== FINAL CLEAN DATA SENT TO SERIALIZER ==========")
+        print(data)
+
         serializer = JobApplicationSerializer(data=data)
         if serializer.is_valid():
             app = serializer.save()
-            # queue candidate embedding
-            embed_application_profile.delay(app.id)
-            print(f"[View] Application {app.id} created and embedding queued")
+            print(f"[SUCCESS] Application {app.id} created successfully")
+            print("[DEBUG] Skills saved:", CandidateSkill.objects.filter(application=app).values())
+            print("[DEBUG] Experiences saved:", CandidateExperience.objects.filter(application=app).values())
+            print("[DEBUG] Educations saved:", CandidateEducation.objects.filter(application=app).values())
+
+            embed_application_profile.delay(app.id)  # queue embedding
             return Response(JobApplicationSerializer(app).data, status=status.HTTP_201_CREATED)
 
+        print("[ERROR] Serializer validation failed:", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    
-    
 
 class RunScreeningNowView(APIView):
     permission_classes = [permissions.IsAuthenticated]

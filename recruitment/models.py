@@ -7,7 +7,6 @@ from pgvector.django import VectorField
 class RequiredSkill(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255)
-    category = models.CharField(max_length=255)
     created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
@@ -41,23 +40,13 @@ class JobDetails(models.Model):
     # Store embeddings of job description
     description_embedding = VectorField(dimensions=768, null=True)  
     # (dim depends on the model, e.g. all-MiniLM-L6-v2 → 384, bge-large → 1024, OpenAI → 1536)
-
+    
+    required_skills = models.ManyToManyField(RequiredSkill, related_name="jobs")
     job_schema = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.job_title} at {self.company.name}"
-
-
-
-
-
-
-class JobDetailSkill(models.Model):
-    job = models.ForeignKey(JobDetails, on_delete=models.CASCADE, related_name='required_skills')
-    required_skill = models.ForeignKey(RequiredSkill, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(default=timezone.now)
-    
 
 
 
@@ -85,49 +74,42 @@ class JobApplication(models.Model):
     address = models.TextField()
     dob = models.DateField()
 
-    # Cover letter optional now
     cover_letter = models.TextField(null=True, blank=True)
-
-    # Store extracted plain text from resume for quick ref
     resume_text = models.TextField(blank=True, null=True)
 
-    # Embedding of candidate profile (resume + cover letter + form fields)
     profile_embedding = VectorField(dimensions=768, null=True)
-    # screening fields (all optional until screening runs)
-    similarity_score = models.FloatField(null=True, blank=True)         # cosine similarity JD↔profile
-    skills_coverage = models.FloatField(null=True, blank=True)          # 0..1
-    experience_score = models.FloatField(null=True, blank=True)         # 0..1
-    final_score = models.FloatField(null=True, blank=True)              # 0..1
-    screening_summary = models.TextField(null=True, blank=True)         # Gemini summary
+
+    similarity_score = models.FloatField(null=True, blank=True)
+    skills_coverage = models.FloatField(null=True, blank=True)
+    experience_score = models.FloatField(null=True, blank=True)
+    final_score = models.FloatField(null=True, blank=True)
+    screening_summary = models.TextField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.candidate_fname} {self.candidate_lname}"
 
-# Candidate skills per application
+
 class CandidateSkill(models.Model):
     id = models.AutoField(primary_key=True)
+    application = models.ForeignKey(JobApplication, on_delete=models.CASCADE, related_name='skills')
     name = models.CharField(max_length=255)
-    application_id = models.ForeignKey(JobApplication, on_delete=models.CASCADE, related_name='skills')
 
 
-# Candidate experience
 class CandidateExperience(models.Model):
     id = models.AutoField(primary_key=True)
-    application_id = models.ForeignKey(JobApplication, on_delete=models.CASCADE, related_name='experiences')
+    application = models.ForeignKey(JobApplication, on_delete=models.CASCADE, related_name='experiences')
     years_of_experience = models.DecimalField(max_digits=4, decimal_places=1)
     previous_job_titles = models.CharField(max_length=255)
     company_name = models.CharField(max_length=255)
 
 
-# Candidate education
 class CandidateEducation(models.Model):
     id = models.AutoField(primary_key=True)
-    application_id = models.ForeignKey(JobApplication, on_delete=models.CASCADE, related_name='educations')
+    application = models.ForeignKey(JobApplication, on_delete=models.CASCADE, related_name='educations')
     education_level = models.CharField(max_length=100)
     institution_name = models.CharField(max_length=255)
     degree_detail = models.CharField(max_length=255)
-    grades = models.CharField(max_length=255)  # You may want to rename `cops` if this is a typo
+    grades = models.CharField(max_length=255)
     start_date = models.DateField()
     end_date = models.DateField()
     description = models.TextField()
-

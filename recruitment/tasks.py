@@ -11,9 +11,26 @@ from django.db.models import Prefetch
 from typing import List, Tuple
 import numpy as np
 
+import os
 from .models import JobDetails, JobApplication, CandidateSkill, CandidateExperience, CandidateEducation
 from .embeddings import embed_text, cosine_sim, build_candidate_profile_text
 from .summarize import summarize_candidate
+
+# from recruitment.tasks import gemini_model
+
+try:
+    import google.generativeai as genai
+except Exception:
+    genai = None
+
+# ✅ Configure Gemini once
+api_key = getattr(settings, "GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
+if api_key and genai:
+    genai.configure(api_key=api_key)
+    gemini_model = genai.GenerativeModel("gemini-2.5-flash")  # or "gemini-1.5-flash"
+else:
+    gemini_model = None
+
 
 @shared_task
 def test_task():
@@ -53,41 +70,111 @@ W_SKILLS = 0.30
 W_EXP = 0.20
 SHORTLIST_THRESHOLD = 0.65   # final_score >= shortlist → mark as shortlisted
 
-def _skills_coverage(job: JobDetails, app: JobApplication) -> float:
-    # Expecting required skills in job.job_schema["requirements"]["skills"] or job.job_schema["must_have_skills"]
-    req = []
-    js = job.job_schema or {}
-    # try some common keys
-    for k in ("requirements", "must_have_skills", "required_skills"):
-        v = js.get(k)
-        if isinstance(v, list): req = v; break
-        if isinstance(v, dict) and "skills" in v and isinstance(v["skills"], list):
-            req = v["skills"]; break
-    req = [s.strip().lower() for s in req if isinstance(s, str)]
-    if not req: 
-        return 1.0  # if no explicit required skills, treat as full coverage
-
+def _skills_coverage(job, app):
+    req = [s.name.strip().lower() for s in job.required_skills.all()]
+    print("Required skills:", req)
     cand_skills = [s.strip().lower() for s in app.skills.values_list("name", flat=True)]
-    if not cand_skills: 
+    print("Candidate skills:", cand_skills)
+
+    if not req:
+        print("No required skills → returning 1.0")
+        return 1.0
+    if not cand_skills:
+        print("No candidate skills → returning 0.0")
         return 0.0
-    matched = sum(1 for s in req if s in cand_skills)
-    return matched / max(1, len(req))
+
+    matched = 0
+    for req_skill in req:
+        if req_skill in cand_skills:
+            matched += 1
+            print(f"✅ Exact match: {req_skill}")
+            continue
+
+        prompt = f"The required skill is '{req_skill}'. Candidate has these skills: {cand_skills}. Reply yes or no."
+        try:
+            if gemini_model:
+                resp = gemini_model.generate_content(prompt)
+                answer = resp.text.strip().lower()
+                print(f"🤖 Gemini response for '{req_skill}':", answer)
+                if "yes" in answer:
+                    matched += 1
+            else:
+                print("[SkillMatch] Gemini not configured")
+        except Exception as e:
+            print(f"[SkillMatch] Gemini error for '{req_skill}': {e}")
+
+    coverage = matched / max(1, len(req))
+    print("Matched skills:", matched)
+    print("Coverage:", coverage)
+    return coverage
+
+
+# def _experience_score(job: JobDetails, app: JobApplication) -> float:
+#     """
+#     Compare candidate's total years of experience with job's required experience_level.
+#     Returns a score between 0 and 1.
+#     """
+#     required_years = job.experience_level or 0
+#     total_years = 0.0
+
+#     print(f"[DEBUG] Job requires {required_years} years")
+#     print(f"[DEBUG] Candidate: {app.candidate_fname} {app.candidate_lname}")
+
+#     for exp in app.experiences.all():
+#         try:
+#             years = float(exp.years_of_experience)
+#             total_years += years
+#             print(f"[DEBUG] Added {years} years from {exp.company_name}")
+#         except Exception as e:
+#             print(f"[ERROR] Invalid years_of_experience for {exp}: {e}")
+
+#     print(f"[DEBUG] Candidate total experience: {total_years}")
+
+#     # Avoid over-influence (cap candidate years to 2× required)
+#     if required_years > 0:
+#         total_years = min(total_years, required_years * 2)
+#     else:
+#         return 1.0 if total_years > 0 else 0.0
+
+#     score = max(0.0, min(1.0, total_years / float(required_years)))
+#     print(f"[DEBUG] Final experience score: {score}")
+#     return score
+
 
 def _experience_score(job: JobDetails, app: JobApplication) -> float:
-    # compare candidate total yrs vs job.experience_level (int, expected min years)
-    min_years = job.experience_level or 0
-    years = 0.0
+    required_years = job.experience_level or 0
+    total_years = 0.0
+
+    # Sum candidate experience
     for e in app.experiences.all():
         try:
-            years += float(e.years_of_experience)
+            total_years += float(e.years_of_experience)
         except Exception:
             pass
-    # cap to avoid over-influence
-    years = min(years, min_years * 2 if min_years > 0 else years)
-    if min_years <= 0:
-        return 1.0 if years > 0 else 0.0
-    # simple ratio, clip to [0,1]
-    return max(0.0, min(1.0, years / float(min_years)))
+
+    # If no requirement set
+    if required_years <= 0:
+        return 1.0 if total_years > 0 else 0.0
+
+    # Cap candidate years at 2× required
+    total_years = min(total_years, required_years * 2)
+
+    # Ratio
+    ratio = total_years / float(required_years)
+
+    # 🔹 Apply tolerance scoring
+    if ratio >= 1.0:
+        # Fully qualified → full score
+        return 1.0
+    elif ratio >= 0.8:
+        # Almost qualified → 0.7 to 0.9 range
+        return 0.7 + (ratio - 0.8) * 1.5  # scales from 0.7 → 1.0
+    else:
+        # Below 80% → scale normally
+        return max(0.0, ratio * 0.8)  # softer penalty
+
+
+
 
 @shared_task
 def embed_job_description(job_id: int):
@@ -169,6 +256,7 @@ def screen_job_after_deadline(job_id: int):
 
         # --- Calculate scores ---
         sim = cosine_sim(jd_vec, cand_vec)
+        print("embedding similarity---->", sim)
         skills_cov = _skills_coverage(job, app)
         exp_score = _experience_score(job, app)
 
@@ -203,7 +291,7 @@ def screen_job_after_deadline(job_id: int):
             candidate_text=candidate_text,
             breakdown=breakdown,
         )
-        print("[Screen] Gemini summary generated:", summary[:200], "...")
+        print("[Screen] Gemini summary generated:", str(summary)[:200], "...")
 
         # --- Decide status ---
         new_status = "shortlisted" if final >= SHORTLIST_THRESHOLD else "reviewed"

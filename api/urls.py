@@ -14,7 +14,8 @@ from recruitment.views import (
     PostJobToLinkedInView, 
     EmployeeCSVImportView,
     JobApplicationView,
-    RunScreeningNowView, 
+    RunScreeningNowView,
+    RequiredSkillListView, 
 )
 urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
@@ -26,6 +27,7 @@ urlpatterns = [
     path('roles/assign-permission/', AssignPermissionToRoleView.as_view(), name='assign-permission-to-role'),
     path('users/assign-role/', AssignRoleToUserView.as_view(), name='assign-role-to-user'),
     
+    path('skills/', RequiredSkillListView.as_view(), name='job-skills'),
     path('jobs/post/', CreateJobPostView.as_view(), name='job-post'),
     path('jobs/list/', ListJobView.as_view(), name='jobs-list'),
     

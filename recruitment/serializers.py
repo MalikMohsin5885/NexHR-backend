@@ -1,10 +1,34 @@
-from .models import JobDetails, JobApplication, CandidateSkill, CandidateExperience, CandidateEducation
+from .models import JobDetails, JobApplication, CandidateSkill, CandidateExperience, CandidateEducation, RequiredSkill
 from rest_framework import serializers
+from django.utils.timezone import now
+
+
+class RequiredSkillSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RequiredSkill
+        fields = ['id', 'name']
+
+
+class SkillField(serializers.Field):
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            return data.get("name")  # take the "name" value
+        elif isinstance(data, str):
+            return data
+        raise serializers.ValidationError("Skill must be a string or an object with 'name'")
+
+    def to_representation(self, value):
+        # When returning, show full object again (id + name)
+        return {"id": value.id, "name": value.name}
 
 class JobDetailsSerializer(serializers.ModelSerializer):
     job_description = serializers.CharField(write_only=True)
-    job_requirements = serializers.CharField(write_only=True, required=False)  # optional
     department = serializers.CharField(write_only=True)
+
+    required_skills = serializers.ListField(
+        child=SkillField(),
+        required=False
+    )
 
     class Meta:
         model = JobDetails
@@ -21,18 +45,19 @@ class JobDetailsSerializer(serializers.ModelSerializer):
             'currency',
             'period',
             'job_description',
-            'job_requirements',
             'job_schema',
             'experience_level',
             'department',
-            'job_deadline',   # ✅ accept datetime from payload
+            'job_deadline',
+            'required_skills',
         ]
 
     def validate_job_deadline(self, value):
-        from django.utils.timezone import now
         if value <= now():
             raise serializers.ValidationError("Deadline must be in the future.")
         return value
+
+
 
 class JobListSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source='company.name', read_only=True)
@@ -45,8 +70,6 @@ class JobListSerializer(serializers.ModelSerializer):
             'period', 'city', 'state', 'country', 'job_deadline',
             'company_name' 
         ]
-        
-        
 
 class CandidateSkillSerializer(serializers.ModelSerializer):
     class Meta:
@@ -73,9 +96,6 @@ class CandidateEducationSerializer(serializers.ModelSerializer):
             'end_date',
             'description'
         ]
-        
-
-
 
 class JobApplicationSerializer(serializers.ModelSerializer):
     skills = CandidateSkillSerializer(many=True, required=False)
@@ -89,7 +109,6 @@ class JobApplicationSerializer(serializers.ModelSerializer):
             'status', 'applied_at', 'gender', 'address', 'dob',
             'resume_text', 'skills', 'experiences', 'educations'
         ]
-        # remove 'resume_text' from read_only_fields
 
     def create(self, validated_data):
         skills_data = validated_data.pop('skills', [])
@@ -98,14 +117,16 @@ class JobApplicationSerializer(serializers.ModelSerializer):
 
         application = JobApplication.objects.create(**validated_data)
 
+        # Save related skills
         for skill in skills_data:
-            CandidateSkill.objects.create(application_id=application, **skill)
+            CandidateSkill.objects.create(application=application, **skill)
 
+        # Save related experiences
         for exp in experiences_data:
-            CandidateExperience.objects.create(application_id=application, **exp)
+            CandidateExperience.objects.create(application=application, **exp)
 
+        # Save related educations
         for edu in educations_data:
-            CandidateEducation.objects.create(application_id=application, **edu)
+            CandidateEducation.objects.create(application=application, **edu)
 
         return application
-

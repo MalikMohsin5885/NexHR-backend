@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from django.conf import settings
 
 try:
@@ -25,9 +26,30 @@ Rules:
 - Keep lists factual and concise (max 3–5 items each).
 """
 
-def summarize_candidate(jd_text: str, candidate_text: str, breakdown: dict):
+
+def _call_gemini_with_retry(model, prompt, retries=3, base_delay=20):
+    """
+    Call Gemini API with retry logic for 429 quota errors.
+    Exponential backoff: base_delay, 2*base_delay, 3*base_delay...
+    """
+    for attempt in range(1, retries + 1):
+        try:
+            resp = model.generate_content(prompt)
+            return resp
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str and attempt < retries:
+                wait_time = base_delay * attempt
+                print(f"[Gemini] Quota exceeded. Retrying in {wait_time}s (attempt {attempt}/{retries})...")
+                time.sleep(wait_time)
+                continue
+            raise  # re-raise other errors or last attempt failure
+
+
+def summarize_candidate(jd_text: str, candidate_text: str, breakdown: dict, skills: list = None):
     """
     Generates a structured JSON summary of candidate vs JD using Gemini API.
+    Now does skill-matching in a single batched request instead of one per skill.
     """
     api_key = getattr(settings, "GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
     print("[Gemini] API key present:", bool(api_key))
@@ -48,11 +70,15 @@ def summarize_candidate(jd_text: str, candidate_text: str, breakdown: dict):
         genai.configure(api_key=api_key)
         print("[Gemini] Configured client successfully")
 
+        # Include skills in the prompt if provided
+        skills_text = f"\n\nSkills to check against candidate: {skills}" if skills else ""
+
         prompt = (
             f"{_SYS_PROMPT}\n\n"
             f"JD:\n{jd_text}\n\n"
             f"Candidate Profile:\n{candidate_text}\n\n"
-            f"Score Breakdown (0..1): {breakdown}\n\n"
+            f"Score Breakdown (0..1): {breakdown}\n"
+            f"{skills_text}\n\n"
             f"Write the summary now."
         )
 
@@ -60,19 +86,12 @@ def summarize_candidate(jd_text: str, candidate_text: str, breakdown: dict):
         print("[Gemini] Prompt (first 300 chars):", prompt[:300])
 
         model = genai.GenerativeModel("gemini-2.5-flash")
-        resp = model.generate_content(prompt)
+        resp = _call_gemini_with_retry(model, prompt)
 
         raw_text = (resp.text or "").strip()
-        print("[Gemini] Response text (raw):", raw_text[:300])
+        print("[Gemini] Response text:", raw_text[:300])
 
-        # ✅ CLEANUP STEP: Remove markdown fences like ```json ... ```
-        if raw_text.startswith("```"):
-            raw_text = raw_text.strip("`").strip()  # remove backticks
-            if raw_text.lower().startswith("json"):
-                raw_text = raw_text[4:].strip()  # remove "json" word
-        print("[Gemini] Cleaned response:", raw_text[:300])
-
-        # ✅ Try to parse JSON safely
+        # ✅ Try to parse JSON
         try:
             parsed = json.loads(raw_text)
             return parsed
@@ -85,7 +104,7 @@ def summarize_candidate(jd_text: str, candidate_text: str, breakdown: dict):
                 "experience_fit": "Parsing failed, see raw_summary.",
                 "risks": [],
                 "score_alignment": f"Breakdown: {breakdown}",
-                "raw_summary": raw_text  # ✅ keep raw so you can debug later
+                "raw_summary": raw_text
             }
 
     except Exception as e:

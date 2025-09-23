@@ -19,7 +19,7 @@ def embed_text(text: str) -> List[float]:
     if not text:
         return [0.0] * 768  # safe zero vector
     model = get_model()
-    vec = model.encode([text], normalize_embeddings=False)[0]  # keep raw; pgvector handles cosine
+    vec = model.encode([text], normalize_embeddings=False)[0]
     return vec.tolist()
 
 def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
