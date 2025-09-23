@@ -2,7 +2,6 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 from django.contrib.contenttypes.models import ContentType
 
-
 class Company(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255)
@@ -35,10 +34,6 @@ class Department(models.Model):
 
     def __str__(self):
         return f"{self.name} - {self.branch.name}"   
-<<<<<<< HEAD
-
-
-=======
     
 
 
@@ -69,7 +64,6 @@ class Permission(models.Model):
 
 
     
->>>>>>> development
 class UserManager(BaseUserManager):
     def create_user(self, email, fname, lname=None, phone=None, password=None, company=None):
         if not email:
@@ -77,7 +71,7 @@ class UserManager(BaseUserManager):
         user = self.model(
             email=self.normalize_email(email),
             fname=fname,
-            lname=lname or None,
+            lname=lname or None,  # Ensuring None is stored instead of an empty string
             phone=phone or "",
             company=company
         )
@@ -85,13 +79,13 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
+
     def create_superuser(self, email, fname, lname=None, password=None, phone=None, company=None):
         user = self.create_user(email=email, fname=fname, lname=lname, phone=phone, password=password, company=company)
         user.is_superuser = True
         user.is_staff = True
         user.save(using=self._db)
         return user
-
 
 class User(AbstractBaseUser, PermissionsMixin):
     STATUS_CHOICES = [
@@ -104,22 +98,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('google', 'Google'),
     ]
 
-    ROLE_CHOICES = [
-        ("ADMIN", "Admin"),
-        ("FINANCE", "Finance"),
-        ("HR", "HR"),
-        ("EMPLOYEE", "Employee"),
-    ]
-
     id = models.AutoField(primary_key=True)
     fname = models.CharField(max_length=255)
     lname = models.CharField(max_length=255, null=True, blank=True)
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20, null=True)
     password = models.CharField(max_length=255, null=True)
-
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="FINANCE")
-
     status = models.CharField(max_length=10, null=True, choices=STATUS_CHOICES, default='active')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

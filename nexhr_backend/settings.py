@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "api",
     "payroll",
 ]
+AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",   # must be first

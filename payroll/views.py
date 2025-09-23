@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
 
 from .models import (
     SalaryStructure, Payroll, Payslip, EmployeeAttendance, LeaveRecord, Notification,
@@ -189,6 +190,20 @@ class LoanViewSet(viewsets.ModelViewSet):
             return Loan.objects.all()
         return Loan.objects.filter(employee=user)
 
+    def perform_create(self, serializer):
+        user = self.request.user
+
+        if user.roles.filter(name__in=["ADMIN", "FINANCE"]).exists():
+            # Admin/Finance must provide employee
+            employee_id = self.request.data.get("employee")
+            if not employee_id:
+                raise ValidationError({"employee": "This field is required for admins/finance."})
+            serializer.save(employee_id=employee_id)
+        else:
+            # Employee can only create loan for themselves
+            amount = self.request.data.get("amount")
+            serializer.save(employee=user, remaining_balance=amount)
+
     @action(detail=True, methods=["post"], url_path="approve", permission_classes=[IsFinance | IsAdmin])
     def approve(self, request, pk=None):
         loan = self.get_object()
@@ -198,8 +213,10 @@ class LoanViewSet(viewsets.ModelViewSet):
         return Response({"detail": "Loan approved."})
 
 
+
 # ---------------- Expense ----------------
 @csrf_exempt_class
+
 class ExpenseViewSet(viewsets.ModelViewSet):
     queryset = Expense.objects.all()
     serializer_class = ExpenseSerializer
@@ -211,6 +228,17 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             return Expense.objects.all()
         return Expense.objects.filter(employee=user)
 
+    def perform_create(self, serializer):
+        user = self.request.user
+
+        if user.roles.filter(name__in=["ADMIN", "FINANCE"]).exists():
+            employee_id = self.request.data.get("employee")
+            if not employee_id:
+                raise ValidationError({"employee": "This field is required for admins/finance."})
+            serializer.save(employee_id=employee_id)
+        else:
+            serializer.save(employee=user)
+
     @action(detail=True, methods=["post"], url_path="approve", permission_classes=[IsFinance | IsAdmin])
     def approve(self, request, pk=None):
         expense = self.get_object()
@@ -218,6 +246,14 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         expense.reviewed_on = timezone.now().date()
         expense.save()
         return Response({"detail": "Expense approved."})
+
+    @action(detail=True, methods=["post"], url_path="reject", permission_classes=[IsFinance | IsAdmin])
+    def reject(self, request, pk=None):
+        expense = self.get_object()
+        expense.status = "REJECTED"
+        expense.reviewed_on = timezone.now().date()
+        expense.save()
+        return Response({"detail": "Expense rejected."})
 
 
 # ---------------- Bulk Payments ----------------
