@@ -62,7 +62,6 @@ oauthlib==3.2.2
 packaging==25.0
 pgvector==0.4.1
 pillow==11.3.0
-pip==25.1.1
 preshed==3.0.10
 prometheus-client==0.22.1
 prompt-toolkit==3.0.51
