@@ -26,6 +26,38 @@ test_django_setup() {
     python test_startup.py || exit 1
 }
 
+# Health check server function for non-HTTP services
+start_health_server() {
+    echo "🏥 Starting health check server on port 8080..."
+    python3 -c "
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'OK')
+        else:
+            self.send_response(404)
+            self.end_headers()
+    
+    def log_message(self, format, *args):
+        pass  # Disable logging
+
+def health_server():
+    server = HTTPServer(('0.0.0.0', 8080), HealthHandler)
+    print('✅ Health check server started on port 8080')
+    server.serve_forever()
+
+# Start health server in background
+thread = threading.Thread(target=health_server, daemon=True)
+thread.start()
+print('🚀 Health server started for Cloud Run')
+" &
+}
+
 # For web service, we need to handle database and static files
 if [ "$SERVICE_TYPE" = "web" ]; then
     echo "🌐 Preparing web service..."
@@ -52,9 +84,13 @@ case $SERVICE_TYPE in
             --error-logfile - \
             --preload
         ;;
+    
     "worker")
         echo "🔄 Starting Celery worker..."
         test_django_setup
+        start_health_server
+        
+        echo "🚀 Starting Celery worker..."
         exec celery -A nexhr_backend worker \
             --loglevel=info \
             --concurrency=2 \
@@ -62,21 +98,29 @@ case $SERVICE_TYPE in
             --without-mingle \
             --without-heartbeat
         ;;
+    
     "beat")
         echo "⏰ Starting Celery beat scheduler..."
         test_django_setup
+        start_health_server
+        
         exec celery -A nexhr_backend beat \
             --loglevel=info \
             --schedule=/tmp/celerybeat-schedule \
             --pidfile=/tmp/celerybeat.pid
         ;;
+    
     "flower")
         echo "🌸 Starting Flower monitoring on port $PORT..."
         test_django_setup
+        
+        # Flower already has HTTP server, but ensure it uses the correct port
+        echo "🔧 Configuring Flower to use port $PORT for health checks..."
         exec celery -A nexhr_backend flower \
             --port=$PORT \
             --basic_auth=admin:${FLOWER_PASSWORD:-admin123}
         ;;
+    
     *)
         echo "❌ Unknown service type: $SERVICE_TYPE"
         echo "Available options: web, worker, beat, flower"
