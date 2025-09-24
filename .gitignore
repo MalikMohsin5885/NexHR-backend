@@ -43,3 +43,4 @@ coverage.xml
 db_queries.txt
 linkedin_request_sample.txt
 *.md
+env-backup.txt
